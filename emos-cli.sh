@@ -12,6 +12,10 @@ CONTAINER_NAME="emos"
 SERVICE_NAME="emos.service"
 API_ENDPOINT="https://support.automatika-robotics.com/v1/license/validate"
 INSTALLER_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh"
+# --- Theme ---
+THEME_RED="#d54e53"
+THEME_BLUE="#81a2be"
+THEME_NEUTRAL="#EEF2F3"
 
 # --- Styling and UI Functions ---
 display_art() {
@@ -24,8 +28,8 @@ display_art() {
 ╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝
 EOF
 )
-    gum style --foreground "#E83F3F" --padding "1 2" "$ART"
-    gum style --padding "0 2" --foreground "#447AE5" --bold "EmbodiedOS Management CLI v${EMOS_VERSION}"
+    gum style --foreground $THEME_RED --padding "1 2" "$ART"
+    gum style --padding "0 2" --foreground $THEME_BLUE --bold "EmbodiedOS Management CLI v${EMOS_VERSION}"
     echo
 }
 run_with_spinner() {
@@ -61,16 +65,16 @@ check_dependencies() {
 }
 
 show_help() {
-    gum style --bold --foreground "#447AE5" "EmbodiedOS Management CLI"
+    gum style --bold --foreground $THEME_BLUE "EmbodiedOS Management CLI"
     echo "Usage: emos [command]"
     echo
 
     # Format the options to look like a table for the interactive menu
-    gum style --bold --foreground "#447AE5" "? Select a command to generate a template:"
+    gum style --bold --foreground $THEME_BLUE "? Select a command to generate a template:"
     local choice
     choice=$(gum choose --height 7 --cursor-prefix "➜ " --header " " \
-        --item.foreground "#EEF2F3" \
-        --cursor.foreground "#E83F3F"\
+        --item.foreground $THEME_NEUTRAL \
+        --cursor.foreground $THEME_RED \
         "install   - Install and start EMOS using a license key." \
         "update    - Update the CLI and/or the EMOS container." \
         "status    - Display info and container status." \
