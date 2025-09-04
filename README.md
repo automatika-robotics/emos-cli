@@ -1,14 +1,12 @@
 # emos-cli
 
 <div align="center">
-  <pre>
 ███████╗███╗   ███╗ ██████╗ ███████╗
 ██╔════╝████╗ ████║██╔═══██╗██╔════╝
 █████╗  ██╔████╔██║██║   ██║███████╗
 ██╔══╝  ██║╚██╔╝██║██║   ██║╚════██║
 ███████╗██║ ╚═╝ ██║╚██████╔╝███████║
 ╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝
-  </pre>
   <p>
     <strong>A glamorous command-line tool for managing EMOS.</strong>
   </p>
@@ -24,7 +22,7 @@
 To install `emos-cli` on your system, simply run the following command in your terminal.
 
 ```bash
-curl -sSL [https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh](https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh) | sudo bash
+curl -sSL https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh | sudo bash
 ````
 
 
