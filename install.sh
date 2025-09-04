@@ -66,7 +66,7 @@ install_dependencies() {
             # Set up Charm repository specifically for gum
             info "Setting up Charm repository to install gum..."
             mkdir -p /etc/apt/keyrings
-            curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --yes --dearmor -o /etc/apt/keyrings/charm.gpg
+            curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor > /etc/apt/keyrings/charm.gpg
             echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | tee /etc/apt/sources.list.d/charm.list
 
             apt-get update
@@ -94,10 +94,9 @@ install_dependencies() {
 # Download and install the latest version of the 'emos' CLI
 install_cli() {
     info "Downloading the latest emos CLI from $EMOS_CLI_URL..."
-    # Use curl to download and tee to write with sudo privileges
-    if curl -sSLf "$EMOS_CLI_URL" -o /tmp/emos_latest; then
-        info "Installing emos to $INSTALL_PATH..."
-        mv /tmp/emos_latest "$INSTALL_PATH"
+    # Download directly to the final destination. This requires the script to be run with sudo.
+    if curl -sSLf "$EMOS_CLI_URL" -o "$INSTALL_PATH"; then
+        info "Setting execute permissions on $INSTALL_PATH..."
         chmod +x "$INSTALL_PATH"
         success "emos CLI installed successfully."
     else

@@ -24,8 +24,8 @@ display_art() {
 ╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝
 EOF
 )
-    gum style --border normal --border-foreground 212 --padding "1 2" "$ART"
-    gum style --foreground 212 "EmbodiedOS Management CLI v${EMOS_VERSION}"
+    gum style --foreground "#E83F3F" --padding "1 2" "$ART"
+    gum style --padding "0 2" --foreground "#447AE5" --bold "EmbodiedOS Management CLI v${EMOS_VERSION}"
     echo
 }
 run_with_spinner() {
@@ -61,24 +61,57 @@ check_dependencies() {
 }
 
 show_help() {
-    gum style --bold "EMOS Management CLI"
+    gum style --bold --foreground "#447AE5" "EmbodiedOS Management CLI"
     echo "Usage: emos [command]"
     echo
-    gum style --bold "Available Commands:"
-    gum table << EOF
-COMMAND,DESCRIPTION
-"install <key>", "Install and start EMOS using a license key."
-"update", "Update the CLI and/or the EMOS container."
-"status", "Display info and container status."
-"--help", "Show this help message."
-"--version", "Show the current version of the CLI tool."
-EOF
-}
 
+    # Format the options to look like a table for the interactive menu
+    gum style --bold --foreground "#447AE5" "? Select a command to generate a template:"
+    local choice
+    choice=$(gum choose --height 7 --cursor-prefix "➜ " --header " " \
+        --item.foreground "#EEF2F3" \
+        --cursor.foreground "#E83F3F"\
+        "install   - Install and start EMOS using a license key." \
+        "update    - Update the CLI and/or the EMOS container." \
+        "status    - Display info and container status." \
+        "version   - Show the current version of the CLI tool." \
+        "exit      - Exit this menu.")
+
+    # Check if the user made a choice (didn't press ESC)
+    if [ -n "$choice" ]; then
+        # Extract the command keyword from the choice (the first word)
+        local command_keyword
+        command_keyword=$(echo "$choice" | awk '{print $1}')
+
+        case "$command_keyword" in
+            "install")
+                gum style --faint "Voilà ! Copy, add license key and press Enter."
+                printf "emos install <license-key>\n"
+                ;;
+            "update")
+                gum style --faint "Voilà ! Copy and press Enter."
+                printf "emos update\n"
+                ;;
+            "status")
+                gum style --faint "Voilà ! Copy and press Enter."
+                printf "emos status\n"
+                ;;
+            "version")
+                gum style --faint "Voilà ! Copy and press Enter."
+                printf "emos --version\n"
+                ;;
+            "exit")
+                # Just exit cleanly with no output
+                exit 0
+                ;;
+        esac
+    fi
+}
 show_status() {
     display_art
-    echo "EMOS is a self-contained automation layer for your robot. Developed with ❤️ by Automatika."
+    echo "EMOS is a self-contained automation layer for your robot."
     echo "This tool helps you manage its lifecycle on this machine."
+    echo "Developed with ❤️  by Automatika Robotics."
     echo
     gum style --bold "Container Status:"
     STATUS=$(docker inspect -f '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null)
@@ -104,6 +137,18 @@ do_install() {
         echo "Usage: emos install <your_license_key>"
         exit 1
     fi
+
+    # Check for existing container
+    if docker inspect "$CONTAINER_NAME" &> /dev/null; then
+        gum style --foreground "yellow" --padding "1 2" --border heavy --border-foreground "yellow" \
+            "⚠️ An existing EMOS container was found."
+
+        if ! gum confirm "This will REMOVE the existing container and perform a fresh installation. Are you sure?"; then
+            gum style --foreground "red" "✖ Installation aborted by user."
+            exit 1
+        fi
+    fi
+
     display_art
     echo "🚀 Starting EMOS installation..."
     mkdir -p "$CONFIG_DIR"
@@ -122,6 +167,16 @@ do_install() {
         exit 1
     fi
     gum style --foreground 2 "✔ License key validated successfully."
+
+    # Stop any existing container if it exists
+    if docker inspect "$CONTAINER_NAME" &> /dev/null; then
+        gum style --bold --foreground 212 "\nProceeding with re-installation. Removing existing container..."
+        # We don't exit on failure here, as the container might already be stopped.
+        # The spinner will report the error visually.
+        run_with_spinner "Stopping the current container..." "docker stop \"$CONTAINER_NAME\""
+        run_with_spinner "Removing the old container..." "docker rm \"$CONTAINER_NAME\""
+    fi
+
     DOCKER_REGISTRY=$(echo "$API_RESPONSE" | jq -r '.registry')
     DOCKER_IMAGE=$(echo "$API_RESPONSE" | jq -r '.image')
     DOCKER_USER=$(echo "$API_RESPONSE" | jq -r '.username')
@@ -129,7 +184,6 @@ do_install() {
 
     # Store only the license key, not the credentials.
     echo "$license_key" > "$LICENSE_FILE"
-    # REMOVED: The line saving API_RESPONSE to DOCKER_CREDS_FILE is gone.
 
     FULL_IMAGE_NAME="${DOCKER_REGISTRY}/${DOCKER_IMAGE}"
     run_with_spinner "Logging into Docker registry..." \
@@ -138,7 +192,6 @@ do_install() {
         "docker pull \"$FULL_IMAGE_NAME\"" || exit 1
     run_with_spinner "Starting EmbodiedOS container..." \
         "docker run -d --restart always --name \"$CONTAINER_NAME\" -p 8080:80 \"$FULL_IMAGE_NAME\"" || exit 1
-    # ... (systemd service creation is unchanged) ...
     gum style --bold --foreground 212 "\nCreating systemd service for auto-restart..."
     echo "This step requires administrative privileges to create a system service file."
     SERVICE_FILE_CONTENT=$(cat <<EOF
@@ -238,7 +291,10 @@ main() {
             show_status
             ;;
         --version)
-            echo "emos version $EMOS_VERSION"
+            display_art
+            echo "EMOS is a self-contained automation layer for your robot."
+            echo "This tool helps you manage its lifecycle on this machine."
+            echo "Developed with ❤️  by Automatika Robotics."
             ;;
         --help)
             show_help
