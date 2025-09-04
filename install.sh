@@ -2,7 +2,7 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # --- Configuration ---
-EMOS_CLI_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/emos"
+EMOS_CLI_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/emos-cli.sh"
 INSTALL_PATH="/usr/local/bin/emos"
 
 # --- UI Functions ---
