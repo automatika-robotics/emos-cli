@@ -117,7 +117,7 @@ update_cli() {
         error "Could not determine the latest version available for download."
     fi
 
-    LOCAL_VERSION=$($INSTALL_PATH --version | awk '{print $3}')
+    LOCAL_VERSION=$(grep '^EMOS_VERSION=' "$INSTALL_PATH" | cut -d'=' -f2 | tr -d '"')
 
     info "Local version: $LOCAL_VERSION, Remote version: $REMOTE_VERSION"
 
