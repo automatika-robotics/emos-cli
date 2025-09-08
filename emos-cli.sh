@@ -1,19 +1,25 @@
 #!/bin/bash
 
 # ==============================================================================
-# emos - EmbodiedOS Management CLI v0.1.1
+# emos - EmbodiedOS Management CLI v0.1.2
 # ==============================================================================
 
 # --- Configuration ---
-EMOS_VERSION="0.1.1"
+EMOS_VERSION="0.1.2"
 CONFIG_DIR="$HOME/.config/emos"
 RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
 CONTAINER_NAME="emos"
 SERVICE_NAME="emos.service"
 DOCKER_RUN_CMD="docker run -d -it --restart always --privileged -v /dev/bus/usb:/dev/bus/usb -v $HOME/emos:/emos --name \"\$CONTAINER_NAME\" --network host --runtime nvidia --gpus=all \"\$FULL_IMAGE_NAME\""
-API_ENDPOINT="https://support-api.automatikarobotics.com/api/registrations/ghcr-credentials"
 INSTALLER_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh"
+
+# --- Support API Endpoints ---
+API_BASE_URL="https://support-api.automatikarobotics.com/api"
+CREDENTIALS_ENDPOINT="$API_BASE_URL/registrations/ghcr-credentials"
+RECIPES_LIST_ENDPOINT="$API_BASE_URL/recipes"
+RECIPE_PULL_ENDPOINT="$API_BASE_URL/recipes/%s" # %s is a placeholder for the filename
+
 # --- Theme ---
 THEME_RED="#d54e53"
 THEME_BLUE="#81a2be"
@@ -84,13 +90,15 @@ show_help() {
     # Format the options to look like a table for the interactive menu
     gum style --bold --foreground $THEME_BLUE "? Select a command to generate a template:"
     local choice
-    choice=$(gum choose --height 7 --cursor-prefix "➜ " --header " " \
+    choice=$(gum choose --height 9 --cursor-prefix "➜ " --header " " \
         --item.foreground $THEME_NEUTRAL \
         --cursor.foreground $THEME_RED \
         "install   - Install and start EMOS using a license key." \
         "update    - Update the CLI and/or the EMOS container." \
         "ls        - List available automation recipes." \
         "run       - Execute a specific automation recipe." \
+        "recipes   - List available recipes for download." \
+        "pull      - Download and install a specific recipe." \
         "status    - Display info and container status." \
         "version   - Show the current version of the CLI tool." \
         "exit      - Exit this menu.")
@@ -110,12 +118,21 @@ show_help() {
                 gum style --faint "Voilà ! Copy and press Enter."
                 printf "emos update\n"
                 ;;
-	    "ls")
+            "ls")
                 gum style --faint "Voilà ! Copy and press Enter."
                 printf "emos ls\n"
                 ;;
-	    "run")
-                printf "emos run <recipe_short_name>\n"
+            "run")
+                gum style --faint "Voilà ! Copy, add recipe name and press Enter."
+                printf "emos run <recipe_name>\n"
+                ;;
+            "recipes")
+                gum style --faint "Voilà ! Copy and press Enter."
+                printf "emos recipes\n"
+                ;;
+            "pull")
+                gum style --faint "Voilà ! Copy, add recipe name and press Enter."
+                printf "emos pull <recipe_name>\n"
                 ;;
             "status")
                 gum style --faint "Voilà ! Copy and press Enter."
@@ -136,7 +153,7 @@ show_help() {
 # Lists available automation recipes found in the recipes directory.
 do_list_recipes() {
     display_art
-    
+
     # Check if the recipes directory exists and is not empty
     if [ ! -d "$RECIPES_DIR" ] || ! ls -d "$RECIPES_DIR"/*/ >/dev/null 2>&1; then
         gum style --foreground 3 "No recipes found in '$RECIPES_DIR'."
@@ -150,7 +167,7 @@ do_list_recipes() {
     for recipe_path in "$RECIPES_DIR"/*/; do
         local short_name
         short_name=$(basename "$recipe_path")
-        
+
         local manifest_file="${recipe_path}manifest.json"
         local long_name="-" # Default value if manifest or name is missing
 
@@ -166,13 +183,14 @@ do_list_recipes() {
         # Append the new row to our CSV data, quoting the full name
         table_data+="\n$short_name,\"$long_name\""
     done
-    
+
     # Pipe the CSV data into gum table for a pretty output
-    echo -e "$table_data" | gum table #--widths=25
+    echo -e "$table_data" | gum table --selected.foreground "$THEME_RED"
+
 }
 
 # Runs a specific automation recipe.
-# Usage: do_run_recipe <recipe_name>
+# Usage:do_run_recipe <recipe_name>
 do_run_recipe() {
     local recipe_name="$1"
 
@@ -216,6 +234,80 @@ do_run_recipe() {
     fi
 }
 
+# Lists available recipes from the remote API.
+do_list_remote_recipes() {
+    display_art
+
+    local TMP_FILE
+    TMP_FILE=$(mktemp)
+
+    # Fetch the list of recipes from the API
+    if ! gum spin --spinner dot --title "Fetching available recipes from server..." -- \
+        curl -sSLf "$RECIPES_LIST_ENDPOINT" -o "$TMP_FILE"; then
+        rm "$TMP_FILE"
+        gum style --foreground 1 "✖ Error: Could not connect to the recipes API."
+        exit 1
+    fi
+
+    local API_RESPONSE
+    API_RESPONSE=$(cat "$TMP_FILE")
+    rm "$TMP_FILE"
+
+    if [ -z "$API_RESPONSE" ] || ! echo "$API_RESPONSE" | jq empty; then
+        gum style --foreground 1 "✖ Error: Recipes API returned an invalid or empty response."
+        exit 1
+    fi
+
+    # Use jq to parse the JSON array and format it as CSV for gum table
+    # It extracts the filename, removes the .zip, and gets the full name.
+    local table_data="RECIPE NAME,DESCRIPTION"
+    table_data+=$(echo "$API_RESPONSE" | jq -r '.[] | "\n\(.filename | sub(".zip$"; "")),\"\(.name)\""')
+
+    gum style --bold --foreground "$THEME_BLUE" "Available Recipes for Download"
+    echo -e "$table_data" | gum table --selected.foreground "$THEME_RED"
+
+    gum style --faint "Use 'emos pull <recipe_name>' to install a recipe."
+}
+
+# Downloads and unzips a specific recipe.
+# Usage: do_pull_recipe <recipe_short_name>
+do_pull_recipe() {
+    local recipe_name="$1"
+
+    if [ -z "$recipe_name" ]; then
+        gum style --foreground 1 "✖ Error: A recipe name is required."
+        echo "Usage: emos pull <recipe_name>"
+        gum style --faint "Run 'emos recipes' to see a list of available recipes."
+        exit 1
+    fi
+
+    # Reconstruct the filename and the download URL
+    local zip_filename="${recipe_name}.zip"
+    local download_url
+    download_url=$(printf "$RECIPE_PULL_ENDPOINT" "$zip_filename")
+
+    # Ensure the destination directory exists
+    mkdir -p "$RECIPES_DIR"
+    local temp_zip_path="/tmp/${zip_filename}"
+
+    display_art
+    gum style --bold --foreground "$THEME_BLUE" "Installing recipe: $recipe_name"
+
+    # Download the recipe zip file
+    run_with_spinner "Downloading from $download_url..." \
+        "curl -sSLf \"$download_url\" -o \"$temp_zip_path\"" || exit 1
+
+    # Unzip the file into the recipes directory
+    # The -o flag overwrites existing files without prompting
+    run_with_spinner "Unzipping recipe to $RECIPES_DIR..." \
+        "unzip -o \"$temp_zip_path\" -d \"$RECIPES_DIR\"" || exit 1
+
+    # Clean up the downloaded zip file
+    rm "$temp_zip_path"
+
+    gum style --border double --padding "1 5" --border-foreground 2 "✔ Recipe '$recipe_name' installed successfully!"
+}
+
 show_status() {
     display_art
     echo "EMOS is a self-contained automation layer for your robot."
@@ -251,7 +343,7 @@ api_validate_license() {
         curl -s -X POST \
             -H "Content-Type: application/json" \
             -d "{\"license_key\": \"$license_key\"}" \
-            "$API_ENDPOINT" -o "$TMP_FILE"; then
+            "$CREDENTIALS_ENDPOINT" -o "$TMP_FILE"; then
         rm "$TMP_FILE"
         gum style --foreground 1 "✖ Error: Could not connect to the license API. Check your network connection."
         exit 1
@@ -307,7 +399,7 @@ deploy_container() {
     run_with_spinner "Logging into Docker registry..." \
         "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin" || exit 1
 
-    gum style --bold --foreground 212 "Pulling EmbodiedOS container image..."
+    gum style --bold --foreground "$THEME_BLUE" "Pulling EmbodiedOS container image..."
     gum style --faint "This may take several minutes depending on your network connection."
     docker pull "$FULL_IMAGE_NAME" || {
         gum style --foreground 1 "✖ Error: Failed to pull Docker image."
@@ -347,17 +439,22 @@ do_install() {
 
     # Remove old container now that license is confirmed valid
     if docker inspect "$CONTAINER_NAME" &> /dev/null; then
-        gum style --bold --foreground 212 "Proceeding with re-installation. Removing existing container..."
+        gum style --bold --foreground "$THEME_BLUE" "Proceeding with re-installation. Removing existing container..."
         run_with_spinner "Stopping the current container..." "docker stop \"$CONTAINER_NAME\""
         run_with_spinner "Removing the old container..." "docker rm \"$CONTAINER_NAME\""
     fi
 
     parse_and_export_docker_vars "$API_RESPONSE"
     echo "$license_key" > "$LICENSE_FILE" # Save the license key
+
+    # Create emos content dir
+    gum style --faint "Ensuring local directory exists at $HOME/emos..."
+    mkdir -p "$HOME/emos"
+
     deploy_container
 
     # --- install: systemd service ---
-    gum style --bold --foreground 212 "Creating systemd service..."
+    gum style --bold --foreground "$THEME_BLUE" "Creating systemd service..."
     SERVICE_FILE_CONTENT=$(cat <<EOF
 [Unit]
 Description=EmbodiedOS Container
@@ -392,7 +489,7 @@ do_update() {
     CLI_UPDATE_STATUS=$?
     set +o pipefail
     if [ "$CLI_UPDATE_STATUS" -eq 10 ]; then
-        gum style --foreground 212 "💡 The emos CLI has been updated to the latest version."
+        gum style --foreground "$THEME_BLUE" "💡 The emos CLI has been updated to the latest version."
         gum style --bold "Please run 'emos update' again to update your EmbodiedOS container."
         exit 0
     elif [ "$CLI_UPDATE_STATUS" -ne 0 ]; then
@@ -439,8 +536,14 @@ main() {
         ls)
             do_list_recipes
             ;;
-	run)
+        run)
             do_run_recipe "$2"
+            ;;
+        recipes)
+            do_list_remote_recipes
+            ;;
+        pull)
+            do_pull_recipe "$2"
             ;;
         status)
             show_status
