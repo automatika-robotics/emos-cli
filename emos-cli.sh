@@ -16,7 +16,7 @@ INSTALLER_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/ma
 
 # --- Support API Endpoints ---
 API_BASE_URL="https://support-api.automatikarobotics.com/api"
-CREDENTIALS_ENDPOINT="$API_BASE_URL/registrations/ghcr-credentials"
+CREDENTIALS_ENDPOINT="$API_BASE_URL/registrations/credentials"
 RECIPES_LIST_ENDPOINT="$API_BASE_URL/recipes"
 RECIPE_PULL_ENDPOINT="$API_BASE_URL/recipes/%s" # %s is a placeholder for the filename
 
