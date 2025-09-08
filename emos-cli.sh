@@ -10,7 +10,7 @@ CONFIG_DIR="$HOME/.config/emos"
 LICENSE_FILE="$CONFIG_DIR/license.key"
 CONTAINER_NAME="emos"
 SERVICE_NAME="emos.service"
-DOCKER_RUN_CMD="docker run -d --restart always --privileged -v /dev/bus/usb:/dev/bus/usb -v $HOME/emos:/emos --name \"\$CONTAINER_NAME\" --network host  \"\$FULL_IMAGE_NAME\""
+DOCKER_RUN_CMD="docker run -d --restart always --privileged -v /dev/bus/usb:/dev/bus/usb -v $HOME/emos:/emos --name \"\$CONTAINER_NAME\" --network host --runtime nvidia --gpus=all \"\$FULL_IMAGE_NAME\""
 API_ENDPOINT="https://support-api.automatikarobotics.com/api/registrations/ghcr-credentials"
 INSTALLER_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh"
 # --- Theme ---
