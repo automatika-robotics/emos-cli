@@ -3,6 +3,7 @@ set -e # Exit immediately if a command exits with a non-zero status.
 
 # --- Configuration ---
 EMOS_CLI_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/emos-cli.sh"
+RECIPE_RUN_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/recipe_run.sh"
 INSTALL_PATH="/usr/local/bin/emos"
 
 # --- UI Functions ---
@@ -93,14 +94,23 @@ install_dependencies() {
 
 # Download and install the latest version of the 'emos' CLI
 install_cli() {
-    info "Downloading the latest emos CLI from $EMOS_CLI_URL..."
-    # Download directly to the final destination. This requires the script to be run with sudo.
-    if curl -sSLf "$EMOS_CLI_URL" -o "$INSTALL_PATH"; then
-        info "Setting execute permissions on $INSTALL_PATH..."
-        chmod +x "$INSTALL_PATH"
-        success "emos CLI installed successfully."
+    info "Downloading the latest emos CLI tools..."
+    
+    # Use chained curl commands with -f to ensure both must succeed.
+    if curl -sSLf "$EMOS_CLI_URL" -o "/tmp/emos" && \
+       curl -sSLf "$RECIPE_RUN_URL" -o "/tmp/recipe_run.sh"; then
+        
+        info "Installing emos to $INSTALL_PATH/emos..."
+        mv "/tmp/emos" "$INSTALL_PATH/emos"
+        chmod +x "$INSTALL_PATH/emos"
+        
+        info "Installing recipe_run.sh to $INSTALL_PATH/recipe_run.sh..."
+        mv "/tmp/recipe_run.sh" "$INSTALL_PATH/recipe_run.sh"
+        chmod +x "$INSTALL_PATH/recipe_run.sh"
+        
+        success "emos CLI tools installed successfully."
     else
-        error "Failed to download the emos CLI. Check the URL and your connection."
+        error "Failed to download one or more CLI tools. Check the URLs and your connection."
     fi
 }
 
@@ -108,22 +118,24 @@ install_cli() {
 update_cli() {
     info "Checking for emos CLI updates..."
 
-    if [ ! -f "$INSTALL_PATH" ]; then
+    if [ ! -f "$INSTALL_PATH/emos" ]; then
         error "emos is not installed. Cannot update."
     fi
 
-    REMOTE_VERSION=$(curl -sSLf "$EMOS_CLI_URL" | grep '^EMOS_VERSION=' | cut -d'=' -f2 | tr -d '"')
-    if [ -z "$REMOTE_VERSION" ]; then
+    local remote_version
+    remote_version=$(curl -sSLf "$EMOS_CLI_URL" | grep '^EMOS_VERSION=' | cut -d'=' -f2 | tr -d '"')
+    if [ -z "$remote_version" ]; then
         error "Could not determine the latest version available for download."
     fi
 
-    LOCAL_VERSION=$(grep '^EMOS_VERSION=' "$INSTALL_PATH" | cut -d'=' -f2 | tr -d '"')
+    local local_version
+    local_version=$(grep '^EMOS_VERSION=' "$INSTALL_PATH/emos" | cut -d'=' -f2 | tr -d '"')
 
-    info "Local version: $LOCAL_VERSION, Remote version: $REMOTE_VERSION"
+    info "Local version: $local_version, Remote version: $remote_version"
 
-    if [ "$REMOTE_VERSION" != "$LOCAL_VERSION" ]; then
-        info "A new version ($REMOTE_VERSION) is available. Updating..."
-        install_cli
+    if [ "$remote_version" != "$local_version" ]; then
+        info "A new version ($remote_version) is available. Updating all tools..."
+        install_cli 
         # This special exit code will be caught by the 'emos update' command
         exit 10
     else
