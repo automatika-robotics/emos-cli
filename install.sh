@@ -4,7 +4,7 @@ set -e # Exit immediately if a command exits with a non-zero status.
 # --- Configuration ---
 EMOS_CLI_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/emos-cli.sh"
 RECIPE_RUN_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/recipe_run.sh"
-INSTALL_PATH="/usr/local/bin/emos"
+INSTALL_PATH="/usr/local/bin"
 
 # --- UI Functions ---
 info() {
@@ -27,14 +27,12 @@ check_root() {
     fi
 }
 
-# Check if Docker is installed, as it's a prerequisite.
 check_docker() {
     if ! command -v docker &> /dev/null; then
         error "Docker is not installed. Please install Docker before running this script. See: https://docs.docker.com/engine/install/"
     fi
     info "Docker installation found."
 }
-
 detect_package_manager() {
     if command -v apt-get &>/dev/null; then
         echo "apt"
@@ -50,26 +48,19 @@ detect_package_manager() {
         echo "unknown"
     fi
 }
-
-# Install dependencies
 install_dependencies() {
     info "Detecting package manager..."
     PKG_MANAGER=$(detect_package_manager)
-
     info "Installing dependencies..."
     case "$PKG_MANAGER" in
         apt)
-            # Install base dependencies first (including gpg for key management)
             info "Installing: curl, jq, gpg..."
             apt-get update
             apt-get install -y curl jq gpg
-
-            # Set up Charm repository specifically for gum
             info "Setting up Charm repository to install gum..."
             mkdir -p /etc/apt/keyrings
             curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor > /etc/apt/keyrings/charm.gpg
             echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | tee /etc/apt/sources.list.d/charm.list
-
             apt-get update
             apt-get install -y gum
             ;;
@@ -92,11 +83,9 @@ install_dependencies() {
     success "Dependencies installed."
 }
 
-# Download and install the latest version of the 'emos' CLI
 install_cli() {
     info "Downloading the latest emos CLI tools..."
     
-    # Use chained curl commands with -f to ensure both must succeed.
     if curl -sSLf "$EMOS_CLI_URL" -o "/tmp/emos" && \
        curl -sSLf "$RECIPE_RUN_URL" -o "/tmp/recipe_run.sh"; then
         
@@ -114,7 +103,6 @@ install_cli() {
     fi
 }
 
-# Checks for an update and performs it if necessary
 update_cli() {
     info "Checking for emos CLI updates..."
 
@@ -135,8 +123,7 @@ update_cli() {
 
     if [ "$remote_version" != "$local_version" ]; then
         info "A new version ($remote_version) is available. Updating all tools..."
-        install_cli 
-        # This special exit code will be caught by the 'emos update' command
+        install_cli
         exit 10
     else
         info "You already have the latest version of the emos CLI."
@@ -144,16 +131,12 @@ update_cli() {
     fi
 }
 
-# --- Main Execution ---
 main() {
     check_root
-
     case "$1" in
-        # Called by 'emos update'
         update)
             update_cli
             ;;
-        # Called by user for first-time install
         "")
             info "Starting first-time installation of emos..."
             check_docker
@@ -168,3 +151,5 @@ main() {
 }
 
 main "$@"
+
+
