@@ -7,6 +7,7 @@
 # --- Configuration ---
 EMOS_VERSION="0.1.1"
 CONFIG_DIR="$HOME/.config/emos"
+RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
 CONTAINER_NAME="emos"
 SERVICE_NAME="emos.service"
@@ -88,6 +89,8 @@ show_help() {
         --cursor.foreground $THEME_RED \
         "install   - Install and start EMOS using a license key." \
         "update    - Update the CLI and/or the EMOS container." \
+        "ls        - List available automation recipes." \
+        "run       - Execute a specific automation recipe." \
         "status    - Display info and container status." \
         "version   - Show the current version of the CLI tool." \
         "exit      - Exit this menu.")
@@ -107,6 +110,13 @@ show_help() {
                 gum style --faint "Voilà ! Copy and press Enter."
                 printf "emos update\n"
                 ;;
+	    "ls")
+                gum style --faint "Voilà ! Copy and press Enter."
+                printf "emos ls\n"
+                ;;
+	    "run")
+                printf "emos run <recipe_short_name>\n"
+                ;;
             "status")
                 gum style --faint "Voilà ! Copy and press Enter."
                 printf "emos status\n"
@@ -122,6 +132,90 @@ show_help() {
         esac
     fi
 }
+
+# Lists available automation recipes found in the recipes directory.
+do_list_recipes() {
+    display_art
+    
+    # Check if the recipes directory exists and is not empty
+    if [ ! -d "$RECIPES_DIR" ] || ! ls -d "$RECIPES_DIR"/*/ >/dev/null 2>&1; then
+        gum style --foreground 3 "No recipes found in '$RECIPES_DIR'."
+        return
+    fi
+
+    # Prepare the header for the table
+    local table_data="NAME,DESCRIPTION"
+
+    # Loop through each recipe's subdirectory
+    for recipe_path in "$RECIPES_DIR"/*/; do
+        local short_name
+        short_name=$(basename "$recipe_path")
+        
+        local manifest_file="${recipe_path}manifest.json"
+        local long_name="-" # Default value if manifest or name is missing
+
+        if [ -f "$manifest_file" ]; then
+            # Use jq to extract the 'name' field, ensuring it's not null or empty
+            local name_from_json
+            name_from_json=$(jq -r '.name' "$manifest_file")
+            if [ -n "$name_from_json" ] && [ "$name_from_json" != "null" ]; then
+                long_name="$name_from_json"
+            fi
+        fi
+
+        # Append the new row to our CSV data, quoting the full name
+        table_data+="\n$short_name,\"$long_name\""
+    done
+    
+    # Pipe the CSV data into gum table for a pretty output
+    echo -e "$table_data" | gum table #--widths=25
+}
+
+# Runs a specific automation recipe.
+# Usage: do_run_recipe <recipe_name>
+do_run_recipe() {
+    local recipe_name="$1"
+
+    # Check if a recipe name was provided
+    if [ -z "$recipe_name" ]; then
+        gum style --foreground 1 "✖ Error: A recipe name is required."
+        echo "Usage: emos run <recipe_name>"
+        gum style --faint "Run 'emos ls' to see a list of available recipes."
+        exit 1
+    fi
+
+    # Check if the recipe_run.sh script exists in the user's PATH
+    if ! command -v recipe_run.sh &> /dev/null; then
+        gum style --foreground 1 "✖ Error: The 'recipe_run.sh' script is not found in your PATH."
+        gum style --faint "Please ensure the EmbodiedOS execution environment is correctly installed."
+        exit 1
+    fi
+
+    # Check if the recipe directory actually exists
+    local recipe_path="$RECIPES_DIR/$recipe_name"
+    if [ ! -d "$recipe_path" ]; then
+        gum style --foreground 1 "✖ Error: Recipe '$recipe_name' not found in '$RECIPES_DIR'."
+        gum style --faint "Please check the spelling. Run 'emos ls' to see available recipes."
+        exit 1
+    fi
+
+    # If all checks pass, execute the recipe
+    display_art
+    gum style --bold --foreground 212 --padding "0 1" "🚀 Launching recipe: $recipe_name"
+    echo
+
+    # Execute the run script directly, allowing the user to see its output and interact.
+    recipe_run.sh --recipe_name="$recipe_name"
+
+    local exit_code=$?
+    echo
+    if [ $exit_code -eq 0 ]; then
+        gum style --foreground 2 "✔ Recipe '$recipe_name' finished successfully."
+    else
+        gum style --foreground 1 "✖ Recipe '$recipe_name' exited with an error (code: $exit_code)."
+    fi
+}
+
 show_status() {
     display_art
     echo "EMOS is a self-contained automation layer for your robot."
@@ -341,6 +435,12 @@ main() {
             ;;
         update)
             do_update
+            ;;
+        ls)
+            do_list_recipes
+            ;;
+	run)
+            do_run_recipe "$2"
             ;;
         status)
             show_status
