@@ -201,7 +201,7 @@ do_run_recipe() {
 
     # If all checks pass, execute the recipe
     display_art
-    gum style --bold --foreground 212 --padding "0 1" "🚀 Launching recipe: $recipe_name"
+    gum style --bold --foreground "$THEME_RED" --padding "0 1" "🚀 Launching recipe: $recipe_name"
     echo
 
     # Execute the run script directly, allowing the user to see its output and interact.
