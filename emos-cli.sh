@@ -394,6 +394,17 @@ parse_and_export_docker_vars() {
     fi
 }
 
+# Force-removes the main container if it exists.
+remove_existing_container() {
+    # Check if the container exists before trying to remove it.
+    if docker inspect "$CONTAINER_NAME" &> /dev/null; then
+        gum style --bold --foreground "$THEME_BLUE" "Removing existing EmbodiedOS container..."
+        # Use a single, atomic force-remove command.
+        run_with_spinner "Forcibly removing container '$CONTAINER_NAME'..." \
+            "docker rm -f \"$CONTAINER_NAME\"" || exit 1
+    fi
+}
+
 # Performs the Docker login, pull, and run sequence.
 # Uses the globally exported Docker variables.
 # Usage: deploy_container
@@ -476,11 +487,7 @@ do_install() {
     gum style --foreground 2 "✔ License key validated successfully."
 
     # Remove old container now that license is confirmed valid
-    if docker inspect "$CONTAINER_NAME" &> /dev/null; then
-        gum style --bold --foreground "$THEME_BLUE" "Proceeding with re-installation. Removing existing container..."
-        run_with_spinner "Stopping the current container..." "docker stop \"$CONTAINER_NAME\""
-        run_with_spinner "Removing the old container..." "docker rm \"$CONTAINER_NAME\""
-    fi
+    remove_existing_container
 
     parse_and_export_docker_vars "$API_RESPONSE"
     echo "$license_key" > "$LICENSE_FILE" # Save the license key
@@ -554,11 +561,9 @@ do_update() {
 
     parse_and_export_docker_vars "$API_RESPONSE"
 
-    deploy_robot_files
+    remove_existing_container
 
-    # Stop and remove the old container before deploying the new one
-    run_with_spinner "Stopping the current container..." "docker stop \"$CONTAINER_NAME\""
-    run_with_spinner "Removing the old container..." "docker rm \"$CONTAINER_NAME\""
+    deploy_robot_files
 
     deploy_container
 
