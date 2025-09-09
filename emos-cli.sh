@@ -12,7 +12,8 @@ LICENSE_FILE="$CONFIG_DIR/license.key"
 CONTAINER_NAME="emos"
 SERVICE_NAME="emos.service"
 DOCKER_RUN_CMD="docker run -d -it --restart always --privileged -v /dev/bus/usb:/dev/bus/usb -v $HOME/emos:/emos --name \"\$CONTAINER_NAME\" --network host --runtime nvidia --gpus=all \"\$FULL_IMAGE_NAME\""
-INSTALLER_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/install.sh"
+GITHUB_ORG="automatika-robotics"
+INSTALLER_URL="https://raw.githubusercontent.com/$GITHUB_ORG/emos-cli/main/install.sh"
 
 # --- Support API Endpoints ---
 API_BASE_URL="https://support-api.automatikarobotics.com/api"
@@ -377,11 +378,14 @@ parse_and_export_docker_vars() {
     export DOCKER_IMAGE=$(echo "$api_response" | jq -r '.image_name')
     export DOCKER_USER=$(echo "$api_response" | jq -r '.username')
     export DOCKER_TOKEN=$(echo "$api_response" | jq -r '.password')
+    export DEPLOYMENT_REPO=$(echo "$api_response" | jq -r '.deployment_repository_name')
+
 
     if [ -z "$DOCKER_REGISTRY" ] || [ "$DOCKER_REGISTRY" == "null" ] || \
        [ -z "$DOCKER_USER" ] || [ "$DOCKER_USER" == "null" ] || \
        [ -z "$DOCKER_TOKEN" ] || [ "$DOCKER_TOKEN" == "null" ] || \
-       [ -z "$DOCKER_IMAGE" ] || [ "$DOCKER_IMAGE" == "null" ]; then
+       [ -z "$DOCKER_IMAGE" ] || [ "$DOCKER_IMAGE" == "null" ] || \
+       [ -z "$DEPLOYMENT_REPO" ] || [ "$DEPLOYMENT_REPO" == "null" ]; then
 
         gum style --foreground 1 "✖ Error: The license API returned incomplete or null data."
         gum style --faint "This can happen with an invalid license key. Please check the response below."
@@ -410,6 +414,40 @@ deploy_container() {
     run_with_spinner "Starting EmbodiedOS container..." \
         "$DOCKER_RUN_CMD" || exit 1
 }
+
+# Clones the deployment repo, and copies the 'robot' directory into ~/emos.
+# For update it removes the old 'robot' directory first.
+deploy_robot_files() {
+    gum style --bold --foreground "$THEME_BLUE" "Deploying robot configuration files..."
+
+    local TMP_DIR
+    TMP_DIR=$(mktemp -d)
+
+    # Construct the authenticated Git URL
+    local GIT_URL="https://""$DOCKER_USER"":""$DOCKER_TOKEN""@github.com/""$GITHUB_ORG""/""$DEPLOYMENT_REPO"".git"
+
+    # Use --depth 1 for a faster, shallow clone
+    run_with_spinner "Cloning deployment repository..." \
+        "git clone --depth 1 \"$GIT_URL\" \"$TMP_DIR\"" || { rm -rf "$TMP_DIR"; exit 1; }
+
+    # Check that the 'robot' directory exists in the cloned repo
+    if [ ! -d "$TMP_DIR/robot" ]; then
+        gum style --foreground 1 "✖ Error: Cloned repository does not contain a 'robot' directory."
+        rm -rf "$TMP_DIR"
+        exit 1
+    fi
+
+    gum style --faint "Updating local robot files at $HOME/emos/robot..."
+    # Ensure a clean state by removing any old version
+    rm -rf "$HOME/emos/robot"
+    # Copy the new version into place
+    cp -r "$TMP_DIR/robot" "$HOME/emos/"
+
+    # Clean up the temporary clone
+    rm -rf "$TMP_DIR"
+    gum style --foreground 2 "✔ Success: Robot files deployed."
+}
+
 
 do_install() {
     local license_key="$1"
@@ -450,6 +488,8 @@ do_install() {
     # Create emos content dir
     gum style --faint "Ensuring local directory exists at $HOME/emos..."
     mkdir -p "$HOME/emos"
+
+    deploy_robot_files
 
     deploy_container
 
@@ -513,6 +553,8 @@ do_update() {
     gum style --foreground 2 "✔ License verified."
 
     parse_and_export_docker_vars "$API_RESPONSE"
+
+    deploy_robot_files
 
     # Stop and remove the old container before deploying the new one
     run_with_spinner "Stopping the current container..." "docker stop \"$CONTAINER_NAME\""
