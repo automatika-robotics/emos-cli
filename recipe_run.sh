@@ -62,17 +62,30 @@ EMOS_ROOT="/emos"
 RECIPES_ROOT="/emos/recipes"
 RECIPES_DIR="$HOME/emos/recipes"
 RECIPE_NAME=""
+RMW_IMPLEMENTATION="rmw_zenoh_cpp"
 
 for arg in "$@"; do
   case $arg in
     --recipe_name=*)
       RECIPE_NAME="${arg#*=}"
       ;;
+	--rmw_implementation=*)
+      RMW_IMPLEMENTATION="${arg#*=}"
+      ;;
     *)
       error "Unknown argument: $arg"
       ;;
   esac
 done
+
+# Validate RMW implementation
+if [[ "$RMW_IMPLEMENTATION" != "rmw_fastrtps_cpp" && \
+      "$RMW_IMPLEMENTATION" != "rmw_cyclonedds_cpp" && \
+      "$RMW_IMPLEMENTATION" != "rmw_zenoh_cpp" ]]; then
+  error "Invalid RMW_IMPLEMENTATION: $RMW_IMPLEMENTATION"
+  error "Allowed values: rmw_fastrtps_cpp, rmw_cyclonedds_cpp, rmw_zenoh_cpp"
+  exit 1
+fi
 
 if [ -z "$RECIPE_NAME" ]; then
     error "Recipe name was not provided. Usage: $0 --recipe_name=<name>"
@@ -88,6 +101,7 @@ DATETIME=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="${LOG_FILE:-${LOG_DIR}/${RECIPE_NAME}_${DATETIME}.log}"
 
 log "Recipe Name: $RECIPE_NAME"
+log "Running Recipe Using RMW Implementation: $RMW_IMPLEMENTATION"
 log "Container Name: $CONTAINER_NAME"
 log "Manifest File: $MANIFEST_FILE"
 
@@ -124,6 +138,74 @@ fi
 
 run_with_spinner "Starting EMOS container..." "docker start $CONTAINER_NAME >/dev/null 2>&1" || error "Failed to start container."
 
+
+# --- RMW Configuration ---
+print_header "RMW CONFIGURATION"
+
+# Set RMW_IMPLEMENTATION in ros_entrypoint.sh
+log "Setting RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION inside container $CONTAINER_NAME..."
+
+docker exec "$CONTAINER_NAME" bash -c "
+  if grep -q '^export RMW_IMPLEMENTATION=' /ros_entrypoint.sh; then
+    # Replace existing line
+    sed -i 's|^export RMW_IMPLEMENTATION=.*|export RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION|' /ros_entrypoint.sh
+  else
+    # Insert after shebang
+    sed -i '1a export RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION' /ros_entrypoint.sh
+  fi
+"
+
+# --- If using zenoh -> RMW Configuration ---
+if [[ "$RMW_IMPLEMENTATION" == "rmw_zenoh_cpp" ]]; then
+
+	# Get zenoh config file from recipe manifest
+	ZENOH_ROUTER_CONFIG_FILE=$(jq -r '.zenoh_router_config_file' "${MANIFEST_FILE}" 2>/dev/null)
+	# If the value is not null or empty, build full path
+	if [[ -n "$ZENOH_ROUTER_CONFIG_FILE" && "$ZENOH_ROUTER_CONFIG_FILE" != "null" ]]; then
+		ZENOH_ROUTER_CONFIG_URI="$RECIPES_ROOT/$ZENOH_ROUTER_CONFIG_FILE"
+		if [[ "$ZENOH_ROUTER_CONFIG_URI" != *.json5 ]]; then
+			warn "Zenoh router config file must be a .json5 file, got '$ZENOH_ROUTER_CONFIG_URI' - Proceeding with default configuration"
+			ZENOH_ROUTER_CONFIG_URI=""
+		else
+			# Verify file exists inside the container before proceeding
+			if ! docker exec "$CONTAINER_NAME" test -f "$ZENOH_ROUTER_CONFIG_URI"; then
+				log "Using Zenoh router config file '$ZENOH_ROUTER_CONFIG_URI'"
+			else
+				warn "Zenoh router config file '$ZENOH_ROUTER_CONFIG_URI' not found - Proceeding with default configuration"
+				ZENOH_ROUTER_CONFIG_URI=""
+			fi
+		fi
+	else
+		log "Using default Zenoh router configuration."
+		ZENOH_ROUTER_CONFIG_URI=""
+	fi
+	# Start zenoh router inside container, detached
+	run_with_spinner "Starting zenoh router..."\
+					 "docker exec -d $CONTAINER_NAME bash -c \
+		             'source ros_entrypoint.sh && ros2 run rmw_zenoh_cpp rmw_zenohd'"
+	# Give it a moment to start
+	sleep 2
+
+	# Set Zenoh config in ros_entrypoint.sh
+	if [[ -n "$ZENOH_ROUTER_CONFIG_URI" ]]; then
+		docker exec "$CONTAINER_NAME" bash -c "
+			if grep -q '^export ZENOH_ROUTER_CONFIG_URI=' /ros_entrypoint.sh; then
+			# Replace existing line
+			sed -i 's|^export ZENOH_ROUTER_CONFIG_URI=.*|export ZENOH_ROUTER_CONFIG_URI=$ZENOH_ROUTER_CONFIG_URI|' /ros_entrypoint.sh
+			else
+			# Insert after shebang
+			sed -i '1a export ZENOH_ROUTER_CONFIG_URI=$ZENOH_ROUTER_CONFIG_URI' /ros_entrypoint.sh
+			fi
+		"
+	else
+		# Remove the config file is exists
+		docker exec "$CONTAINER_NAME" bash -c "
+			sed -i '/^export ZENOH_ROUTER_CONFIG_URI=/d' /ros_entrypoint.sh
+		"
+	fi
+fi
+
+
 # --- Hardware & Sensor Launch ---
 print_header "HARDWARE & SENSOR LAUNCH"
 
@@ -153,7 +235,7 @@ log "Verifying required ROS2 nodes are active..."
 ALL_PRESENT=true
 for NODE in "${EXPECTED_NODES[@]}"; do
     NODE_CLEAN=$(echo "$NODE" | xargs)
-    
+
     # Use gum spin for the verification loop
     if ! gum spin --spinner dot --title "Checking for node '$NODE_CLEAN'..." -- \
         bash -c "for i in {1..10}; do docker exec $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 node list' | grep -Fq \"$NODE_CLEAN\" && exit 0; sleep 1; done; exit 1"; then
