@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-# emos - EmbodiedOS Management CLI v0.1.3
+# emos - EmbodiedOS Management CLI v0.1.4
 # ==============================================================================
 
 # --- Configuration ---
-EMOS_VERSION="0.1.3"
+EMOS_VERSION="0.1.4"
 CONFIG_DIR="$HOME/.config/emos"
 RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
@@ -124,7 +124,7 @@ show_help() {
                 printf "emos ls\n"
                 ;;
             "run")
-                gum style --faint "Voilà ! Copy, add recipe name and press Enter."
+                gum style --faint "Voilà ! Copy, add recipe name and optional arguments."
                 printf "emos run <recipe_name>\n"
                 ;;
             "recipes")
@@ -203,6 +203,9 @@ do_run_recipe() {
         exit 1
     fi
 
+    # Shift the recipe_name off the argument list. The rest ($@) are extra args.
+    shift
+
     # Check if the recipe_run.sh script exists in the user's PATH
     if ! command -v recipe_run.sh &> /dev/null; then
         gum style --foreground 1 "✖ Error: The 'recipe_run.sh' script is not found in your PATH."
@@ -224,7 +227,8 @@ do_run_recipe() {
     echo
 
     # Execute the run script directly, allowing the user to see its output and interact.
-    recipe_run.sh --recipe_name="$recipe_name"
+    # The "$@" ensures extra arguments are passed along correctly.
+    recipe_run.sh --recipe_name="$recipe_name" "$@"
 
     local exit_code=$?
     echo
@@ -584,7 +588,8 @@ main() {
             do_list_recipes
             ;;
         run)
-            do_run_recipe "$2"
+            shift
+            do_run_recipe "$@" # Pass all remaining arguments
             ;;
         recipes)
             do_list_remote_recipes
