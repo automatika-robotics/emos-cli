@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-# emos - EmbodiedOS Management CLI v0.1.5
+# emos - EmbodiedOS Management CLI v0.1.6
 # ==============================================================================
 
 # --- Configuration ---
-EMOS_VERSION="0.1.5"
+EMOS_VERSION="0.1.6"
 CONFIG_DIR="$HOME/.config/emos"
 RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
@@ -286,13 +286,25 @@ do_pull_recipe() {
         exit 1
     fi
 
+    # Define and create the final destination directory for this specific recipe
+    local recipe_dest_dir="$RECIPES_DIR/$recipe_name"
+
+    # Check for existing recipe and ask for confirmation before proceeding
+    if [ -d "$recipe_dest_dir" ]; then
+        gum style --foreground 3 --padding "0 1" "[!] Warning: A recipe named '$recipe_name' already exists."
+        if ! gum confirm --prompt.foreground $THEME_BLUE --selected.background $THEME_RED "Continuing will overwrite its contents. Are you sure?"; then
+            gum style --foreground 1 "✖ Pull operation aborted by user."
+            exit 1
+        fi
+        echo # newline for better spacing
+    fi
+
     # Reconstruct the zip filename and the download URL
     local download_url
     download_url=$(printf "$RECIPE_PULL_ENDPOINT" "$recipe_name")
     local temp_zip_path="/tmp/${recipe_name}.zip"
 
-    # Define and create the final destination directory for this specific recipe
-    local recipe_dest_dir="$RECIPES_DIR/$recipe_name"
+    # Ensure the destination directory exists
     mkdir -p "$recipe_dest_dir"
 
     display_art
@@ -476,7 +488,7 @@ do_install() {
     if docker inspect "$CONTAINER_NAME" &> /dev/null; then
         gum style --foreground 3 --padding "1 2" --border double --border-foreground 3 \
             "[!] An existing EmbodiedOS container was found."
-        if ! gum confirm "This will REMOVE the existing container and perform a fresh installation. Are you sure?"; then
+        if ! gum confirm --prompt.foreground $THEME_BLUE --selected.background $THEME_RED "This will REMOVE the existing container and perform a fresh installation. Are you sure?"; then
             gum style --foreground 1 "✖ Installation aborted by user."
             exit 1
         fi
@@ -519,7 +531,7 @@ ExecStop=/usr/bin/docker stop -t 2 $CONTAINER_NAME
 WantedBy=multi-user.target
 EOF
 )
-    if gum confirm "Create/overwrite systemd service file for auto-restart?"; then
+    if gum confirm --prompt.foreground $THEME_BLUE --selected.background $THEME_RED "Create/overwrite systemd service file for auto-restart?"; then
         echo "$SERVICE_FILE_CONTENT" | sudo tee "/etc/systemd/system/${SERVICE_NAME}" > /dev/null
         run_with_spinner "Reloading systemd daemon..." "sudo systemctl daemon-reload" || exit 1
         run_with_spinner "Enabling emos service..." "sudo systemctl enable ${SERVICE_NAME}" || exit 1
