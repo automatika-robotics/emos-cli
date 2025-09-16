@@ -213,9 +213,25 @@ run_with_spinner "Launching robot base hardware..." \
     "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_robot.py'"
 
 for sensor in "${ROBOT_SENSORS[@]}"; do
-    run_with_spinner "Launching sensor: $sensor..." \
-        "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_${sensor}.py config_file:=$RECIPES_ROOT/$RECIPE_NAME/${sensor}_config.yaml'"
+    CONFIG_FILE=""
+    for ext in yaml json toml; do
+        CANDIDATE="$RECIPES_ROOT/$RECIPE_NAME/${sensor}_config.$ext"
+		# Check if the file exists
+		if docker exec "$CONTAINER_NAME" bash -c "[[ -f '$CANDIDATE' ]]"; then
+			CONFIG_FILE="$CANDIDATE"
+			break
+		fi
+    done
+
+    if [[ -n "$CONFIG_FILE" ]]; then
+        run_with_spinner "Launching sensor: $sensor with custom config from $CONFIG_FILE..." \
+            "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_${sensor}.py config_file:=$CONFIG_FILE'"
+    else
+        run_with_spinner "Launching sensor: $sensor with default config..." \
+            "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_${sensor}.py'"
+    fi
 done
+
 
 # --- Node Verification ---
 print_header "VERIFYING ROS2 NODES"
