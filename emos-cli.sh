@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-# emos - EmbodiedOS Management CLI v0.1.4
+# emos - EmbodiedOS Management CLI v0.1.5
 # ==============================================================================
 
 # --- Configuration ---
-EMOS_VERSION="0.1.4"
+EMOS_VERSION="0.1.5"
 CONFIG_DIR="$HOME/.config/emos"
 RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
@@ -264,9 +264,9 @@ do_list_remote_recipes() {
     fi
 
     # Use jq to parse the JSON array and format it as CSV for gum table
-    # It extracts the filename, removes the .zip, and gets the full name.
+    # It extracts the filename, and gets the full name.
     local table_data="RECIPE NAME,DESCRIPTION"
-    table_data+=$(echo "$API_RESPONSE" | jq -r '.[] | "\n\(.filename | sub(".zip$"; "")),\"\(.name)\""')
+    table_data+=$(echo "$API_RESPONSE" | jq -r '.[] | "\n\(.filename),\"\(.name)\""')
 
     gum style --bold --foreground "$THEME_BLUE" "Available Recipes for Download"
     echo -e "$table_data" | gum table --selected.foreground "$THEME_RED"
@@ -286,14 +286,14 @@ do_pull_recipe() {
         exit 1
     fi
 
-    # Reconstruct the filename and the download URL
-    local zip_filename="${recipe_name}.zip"
+    # Reconstruct the zip filename and the download URL
     local download_url
-    download_url=$(printf "$RECIPE_PULL_ENDPOINT" "$zip_filename")
+    download_url=$(printf "$RECIPE_PULL_ENDPOINT" "$recipe_name")
+    local temp_zip_path="/tmp/${recipe_name}.zip"
 
-    # Ensure the destination directory exists
-    mkdir -p "$RECIPES_DIR"
-    local temp_zip_path="/tmp/${zip_filename}"
+    # Define and create the final destination directory for this specific recipe
+    local recipe_dest_dir="$RECIPES_DIR/$recipe_name"
+    mkdir -p "$recipe_dest_dir"
 
     display_art
     gum style --bold --foreground "$THEME_BLUE" "Installing recipe: $recipe_name"
@@ -302,10 +302,10 @@ do_pull_recipe() {
     run_with_spinner "Downloading from $download_url..." \
         "curl -sSLf \"$download_url\" -o \"$temp_zip_path\"" || exit 1
 
-    # Unzip the file into the recipes directory
+    # Unzip the file into the recipe-specific directory
     # The -o flag overwrites existing files without prompting
-    run_with_spinner "Unzipping recipe to $RECIPES_DIR..." \
-        "unzip -o \"$temp_zip_path\" -d \"$RECIPES_DIR\"" || exit 1
+    run_with_spinner "Unzipping recipe to $recipe_dest_dir..." \
+        "unzip -o \"$temp_zip_path\" -d \"$recipe_dest_dir\"" || exit 1
 
     # Clean up the downloaded zip file
     rm "$temp_zip_path"
