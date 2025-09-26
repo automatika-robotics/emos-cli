@@ -214,9 +214,19 @@ docker exec ${CONTAINER_NAME} bash -c "source ros_entrypoint.sh && \
 	--topics ${TOPICS[*]}" &
 BAG_PID=$!
 
+cleanup() {
+    log "Got Ctrl+C, terminating mapping..."
+    success "Map data saved to ${OUTPUT_DIR}"
+    kill $BAG_PID  # Kill bag process
+    exit 0
+}
+
 log "Mapping Data Recording Started..."
 log "Output bag file: ${OUTPUT_DIR}"
 log "Press Ctrl+C to stop both processes."
+
+# Trap Ctrl+C (SIGINT) and call cleanup
+trap cleanup SIGINT
 
 # Keep script alive until rosbag stops
 wait $BAG_PID

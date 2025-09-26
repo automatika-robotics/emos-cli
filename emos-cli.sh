@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-# emos - EmbodiedOS Management CLI v0.2.0
+# emos - EmbodiedOS Management CLI v0.2.1
 # ==============================================================================
 
 # --- Configuration ---
-EMOS_VERSION="0.2.0"
+EMOS_VERSION="0.2.1"
 CONFIG_DIR="$HOME/.config/emos"
 RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
