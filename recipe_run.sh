@@ -10,6 +10,29 @@ THEME_RED="#d54e53"
 THEME_BLUE="#81a2be"
 THEME_NEUTRAL="#EEF2F3"
 
+# A wrapper for gum logging functions to standardize output format
+# Usage: log "Your message here"
+log() {
+    gum style --foreground 240 "│"
+    gum style --foreground 250 "├─ $1"
+}
+
+success() {
+    gum style --foreground 2 "│"
+    gum style --foreground 2 "├─ ✔ Success: $1"
+}
+
+warn() {
+    gum style --foreground 3 "│"
+    gum style --foreground 3 "├─ ! Warning: $1"
+}
+
+error() {
+    gum style --foreground 1 "│"
+    gum style --foreground 1 "├─ ✖ Error: $1"
+    exit 1
+}
+
 # A wrapper for gum spin to show a loader for long-running commands
 # Usage: run_with_spinner "Doing a thing..." "my_command --with --args"
 run_with_spinner() {
@@ -25,11 +48,11 @@ run_with_spinner() {
     if [ $EXIT_CODE -eq 0 ]; then
         # On success, show a brief spinner animation for a polished feel.
         gum spin --spinner dot --title "$title" -- sleep 1
-        gum style --foreground 2 "✔ Success:" "$title"
+        success "$title"
         return 0
     else
         # On failure, print our error header AND the captured output.
-        gum style --foreground 1 "✖ Error:" "$title"
+        error "$title"
         gum style --faint "  The command failed with the following output:"
         # Use gum format to indent the error message nicely.
         gum format -- "$OUTPUT"
@@ -37,21 +60,6 @@ run_with_spinner() {
     fi
 }
 
-log() {
-    gum style --foreground 240 "│"
-    gum style --foreground 250 "├─ $1"
-}
-
-warn() {
-    gum style --foreground 3 "│"
-    gum style --foreground 3 "├─ WARNING: $1"
-}
-
-error() {
-    gum style --foreground 1 "│"
-    gum style --foreground 1 "├─ ERROR: $1"
-    exit 1
-}
 
 print_header() {
     gum style --bold --padding "1 2" --border thick --border-foreground "$THEME_BLUE" --foreground "$THEME_BLUE" "$1"
@@ -126,7 +134,7 @@ sudo pkill -f roslaunch >/dev/null 2>&1 || true
 sudo pkill -f roscore >/dev/null 2>&1 || true
 sudo pkill -f ros2 >/dev/null 2>&1 || true
 sleep 1
-gum style --foreground 2 "✔ Success: Terminated host ROS processes."
+success "Terminated host ROS processes."
 
 if [ -z "$(docker ps -a -q -f name=^/${CONTAINER_NAME}$)" ]; then
     error "Container '$CONTAINER_NAME' does not exist! Run EMOS Setup first."
@@ -258,7 +266,7 @@ for NODE in "${EXPECTED_NODES[@]}"; do
         error "Node '$NODE_CLEAN' did not appear within 10 seconds!"
         ALL_PRESENT=false
     else
-        gum style --foreground 2 "✔ Success: Node '$NODE_CLEAN' is active."
+        success "Node '$NODE_CLEAN' is active."
     fi
 done
 
@@ -304,7 +312,7 @@ RECIPE_EXIT_CODE=${PIPESTATUS[0]}
 gum style --bold --padding "1 0" --foreground 2 "END RECIPE OUTPUT"
 
 if [ $RECIPE_EXIT_CODE -eq 0 ]; then
-    gum style --foreground 2 "✔ Recipe '$RECIPE_NAME' finished successfully."
+    success "Recipe '$RECIPE_NAME' finished successfully."
 else
     error "Recipe '$RECIPE_NAME' exited with an error (code: $RECIPE_EXIT_CODE)."
 fi
