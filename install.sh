@@ -4,6 +4,7 @@ set -e # Exit immediately if a command exits with a non-zero status.
 # --- Configuration ---
 EMOS_CLI_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/emos-cli.sh"
 RECIPE_RUN_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/recipe_run.sh"
+MAPPING_RUN_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/mapping_run.sh"
 INSTALL_PATH="/usr/local/bin"
 
 # --- UI Functions ---
@@ -85,18 +86,23 @@ install_dependencies() {
 
 install_cli() {
     info "Downloading the latest emos CLI tools..."
-    
+
     if curl -sSLf "$EMOS_CLI_URL" -o "/tmp/emos" && \
-       curl -sSLf "$RECIPE_RUN_URL" -o "/tmp/recipe_run.sh"; then
-        
+       curl -sSLf "$RECIPE_RUN_URL" -o "/tmp/recipe_run.sh" && \
+	   curl -sSLf "$MAPPING_RUN_URL" -o "/tmp/mapping_run.sh"; then
+
         info "Installing emos to $INSTALL_PATH/emos..."
         mv "/tmp/emos" "$INSTALL_PATH/emos"
         chmod +x "$INSTALL_PATH/emos"
-        
+
         info "Installing recipe_run.sh to $INSTALL_PATH/recipe_run.sh..."
         mv "/tmp/recipe_run.sh" "$INSTALL_PATH/recipe_run.sh"
         chmod +x "$INSTALL_PATH/recipe_run.sh"
-        
+
+		info "Installing mapping_run.sh to $INSTALL_PATH/mapping_run.sh..."
+        mv "/tmp/mapping_run.sh" "$INSTALL_PATH/mapping_run.sh"
+        chmod +x "$INSTALL_PATH/mapping_run.sh"
+
         success "emos CLI tools installed successfully."
     else
         error "Failed to download one or more CLI tools. Check the URLs and your connection."

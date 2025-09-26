@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-# emos - EmbodiedOS Management CLI v0.1.6
+# emos - EmbodiedOS Management CLI v0.2.0
 # ==============================================================================
 
 # --- Configuration ---
-EMOS_VERSION="0.1.6"
+EMOS_VERSION="0.2.0"
 CONFIG_DIR="$HOME/.config/emos"
 RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
@@ -91,7 +91,7 @@ show_help() {
     # Format the options to look like a table for the interactive menu
     gum style --bold --foreground $THEME_BLUE "? Select a command to generate a template:"
     local choice
-    choice=$(gum choose --height 9 --cursor-prefix "➜ " --header " " \
+    choice=$(gum choose --height 10 --cursor-prefix "➜ " --header " " \
         --item.foreground $THEME_NEUTRAL \
         --cursor.foreground $THEME_RED \
         "install   - Install and start EMOS using a license key." \
@@ -100,6 +100,7 @@ show_help() {
         "run       - Execute a specific automation recipe." \
         "recipes   - List available recipes for download." \
         "pull      - Download and install a specific recipe." \
+		"map       - Run map data recording on your robot." \
         "status    - Display info and container status." \
         "version   - Show the current version of the CLI tool." \
         "exit      - Exit this menu.")
@@ -134,6 +135,10 @@ show_help() {
             "pull")
                 gum style --faint "Voilà ! Copy, add recipe name and press Enter."
                 printf "emos pull <recipe_name>\n"
+                ;;
+			"map")
+                gum style --faint "Voilà ! Copy and press Enter."
+                printf "emos map\n"
                 ;;
             "status")
                 gum style --faint "Voilà ! Copy and press Enter."
@@ -236,6 +241,34 @@ do_run_recipe() {
         gum style --foreground 2 "✔ Recipe '$recipe_name' finished successfully."
     else
         gum style --foreground 1 "✖ Recipe '$recipe_name' exited with an error (code: $exit_code)."
+    fi
+}
+
+# Runs mapping data recording.
+# Usage:do_run_mapping
+do_run_mapping() {
+
+    # Check if the mapping_run.sh script exists in the user's PATH
+    if ! command -v mapping_run.sh &> /dev/null; then
+        gum style --foreground 1 "✖ Error: The 'mapping_run.sh' script is not found in your PATH."
+        gum style --faint "Please ensure the EmbodiedOS execution environment is correctly installed."
+        exit 1
+    fi
+
+    # If all checks pass, execute the recipe
+    display_art
+    gum style --bold --foreground "$THEME_RED" --padding "0 1" "🚀 Launching mapping"
+    echo
+
+    # Execute the run script directly, allowing the user to see its output and interact.
+    mapping_run.sh
+
+    local exit_code=$?
+    echo
+    if [ $exit_code -eq 0 ]; then
+        gum style --foreground 2 "✔ Mapping data recording finished successfully."
+    else
+        gum style --foreground 1 "✖ Mapping data recording exited with an error (code: $exit_code)."
     fi
 }
 
@@ -608,6 +641,9 @@ main() {
             ;;
         pull)
             do_pull_recipe "$2"
+            ;;
+		map)
+            do_run_mapping
             ;;
         status)
             show_status
