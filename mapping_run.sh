@@ -216,13 +216,15 @@ BAG_PID=$!
 
 cleanup() {
     log "Got Ctrl+C, terminating mapping..."
-    success "Map data saved to ${OUTPUT_DIR}"
+    run_with_spinner "Zipping & Saving Mapped Data..." \
+    "tar -czvf $BAG_PATH.tar.gz $BAG_PATH && rm -rf $BAG_PATH"
+    success "Map data saved to ${OUTPUT_DIR}.tar.gz"
     kill $BAG_PID  # Kill bag process
     exit 0
 }
 
 log "Mapping Data Recording Started..."
-log "Output bag file: ${OUTPUT_DIR}"
+log "Output bag file: ${OUTPUT_DIR}.tar.gz"
 log "Press Ctrl+C to stop both processes."
 
 # Trap Ctrl+C (SIGINT) and call cleanup
