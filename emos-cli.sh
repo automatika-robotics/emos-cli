@@ -601,6 +601,7 @@ show_map_help() {
     echo "Available subcommands:"
     gum style --padding "0 2" "  record   - Start recording a new map (Should be run on board the robot)."
     gum style --padding "0 2" "  install-editor - Download and install the map editor container."
+	gum style --padding "0 2" "  edit <path>    - Process a ROS bag file to generate a PCD map."
     echo
     gum style --faint "Run commands with emos map <command_name>"
 }
@@ -702,6 +703,95 @@ do_map_install_editor() {
     fi
 }
 
+# Processes a ROS bag file to generate a PCD map using the editor container.
+# Usage: do_map_edit <path_to_bag_file.tar.gz>
+do_map_edit() {
+    local bag_file_path="$1"
+    local MAPPING_CONTAINER_NAME="emos-mapping"
+
+    # Argument and File Validation
+    if [ -z "$bag_file_path" ]; then
+        gum style --foreground 1 "✖ Error: Path to a ROS bag file (.tar.gz) is required."
+        echo "Usage: emos map edit <path_to_bag_file.tar.gz>"
+        exit 1
+    fi
+    if [[ "$bag_file_path" != *.tar.gz ]]; then
+        gum style --foreground 1 "✖ Error: File must be a .tar.gz archive."
+        exit 1
+    fi
+    if [ ! -f "$bag_file_path" ]; then
+        gum style --foreground 1 "✖ Error: File not found at '$bag_file_path'."
+        exit 1
+    fi
+
+    # Extract names from the path
+    local bag_filename
+    bag_filename=$(basename "$bag_file_path")
+    local map_name
+    map_name="${bag_filename%.tar.gz}" # Removes .tar.gz from filename
+
+    # Check for and start the container
+    if ! docker inspect "$MAPPING_CONTAINER_NAME" &> /dev/null; then
+        gum style --foreground 1 "✖ Error: Mapping container '$MAPPING_CONTAINER_NAME' not found."
+        gum style --faint "Please run 'emos map install-editor' first."
+        exit 1
+    fi
+    run_with_spinner "Starting map editor container..." "docker start '$MAPPING_CONTAINER_NAME'" || exit 1
+
+    display_art
+    gum style --bold --foreground "$THEME_BLUE" "🚀 Processing Map File: $map_name"
+
+    # Allow GUI access from the container
+    gum style --faint "Temporarily allowing container GUI access..."
+    xhost +local:docker &>/dev/null
+
+    # Copy and extract the bag file inside the container
+    run_with_spinner "Copying '$bag_filename' into container..." "docker cp '$bag_file_path' '$MAPPING_CONTAINER_NAME:/tmp/'" || exit 1
+    run_with_spinner "Extracting bag file inside container..." "docker exec '$MAPPING_CONTAINER_NAME' tar -xzf '/tmp/$bag_filename' -C /tmp/" || exit 1
+
+    # Run the editor process in the container (detached)
+    gum style --bold --foreground "$THEME_BLUE" "Starting the editor..."
+    docker exec -d "$MAPPING_CONTAINER_NAME" bash -c "
+        source /ros_entrypoint.sh
+        ros2 run glim_ros glim_roseditor --map_path /tmp/dump --save_path /tmp --map_name $map_name
+        "
+
+    # Start the ROS bag playback (detached)
+    gum style --bold --foreground "$THEME_BLUE" "Starting ROS bag playback..."
+    docker exec -d "$MAPPING_CONTAINER_NAME" bash -c "source /ros_entrypoint.sh && ros2 bag play /tmp/$map_name"
+
+    # Wait for the editor process to finish
+    gum style --bold --foreground "$THEME_BLUE" "Edit your map and close the editor window when done. I will wait for you to finish..."
+
+    while docker top "$MAPPING_CONTAINER_NAME" | grep -q glim_roseditor; do
+        sleep 5
+    done
+
+    gum style --foreground 2 "✔ Editor process has exited."
+
+    # Once exited, check that the PCD file exists
+    local output_pcd_path_container="/tmp/$map_name.pcd"
+    if docker exec "$MAPPING_CONTAINER_NAME" test -f "$output_pcd_path_container"; then
+        gum style --foreground 2 "✔ PCD file generated successfully inside the container."
+    else
+        gum style --foreground 1 "✖ Error: Editor exited but no PCD file found at $output_pcd_path_container."
+        exit 1
+    fi
+
+    # Copy the output file from the container to the host
+    local host_output_path="./${map_name}.pcd"
+    run_with_spinner "Copying '$map_name.pcd' to host at '$host_output_path'..." "docker cp '$MAPPING_CONTAINER_NAME:$output_pcd_path_container' '$host_output_path'" || exit 1
+
+    # Cleanup
+    gum style --faint "Cleaning up..."
+    # Clean up files inside the container in the background
+    docker exec "$MAPPING_CONTAINER_NAME" rm -rf "/tmp/$map_name" "/tmp/dump" "/tmp/$bag_filename" "$output_pcd_path_container"
+    run_with_spinner "Stopping the map editor container..." "docker stop '$MAPPING_CONTAINER_NAME'"
+    xhost -local:docker &>/dev/null
+
+    gum style --border double --padding "1 5" --border-foreground 2 "🎉 Map editing complete! Your map is ready at '$host_output_path' 🎉"
+}
+
 # Handles 'map' subcommands
 # Usage: handle_map_command <subcommand> [args...]
 handle_map_command() {
@@ -714,6 +804,9 @@ handle_map_command() {
             ;;
         install-editor)
             do_map_install_editor
+            ;;
+        edit)
+            do_map_edit "$@" # Pass the file path
             ;;
         "" | "help" | "--help")
             show_map_help
