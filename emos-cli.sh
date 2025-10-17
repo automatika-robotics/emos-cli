@@ -100,7 +100,7 @@ show_help() {
         "run       - Execute a specific automation recipe." \
         "recipes   - List available recipes for download." \
         "pull      - Download and install a specific recipe." \
-		"map       - Run map data recording on your robot." \
+		"map       - Manage mapping functions (Run emos map to see subcommands)." \
         "status    - Display info and container status." \
         "version   - Show the current version of the CLI tool." \
         "exit      - Exit this menu.")
@@ -138,7 +138,7 @@ show_help() {
                 ;;
 			"map")
                 gum style --faint "Voilà ! Copy and press Enter."
-                printf "emos map\n"
+                printf "emos map <command_name>\n"
                 ;;
             "status")
                 gum style --faint "Voilà ! Copy and press Enter."
@@ -241,34 +241,6 @@ do_run_recipe() {
         gum style --foreground 2 "✔ Recipe '$recipe_name' finished successfully."
     else
         gum style --foreground 1 "✖ Recipe '$recipe_name' exited with an error (code: $exit_code)."
-    fi
-}
-
-# Runs mapping data recording.
-# Usage:do_run_mapping
-do_run_mapping() {
-
-    # Check if the mapping_run.sh script exists in the user's PATH
-    if ! command -v mapping_run.sh &> /dev/null; then
-        gum style --foreground 1 "✖ Error: The 'mapping_run.sh' script is not found in your PATH."
-        gum style --faint "Please ensure the EmbodiedOS execution environment is correctly installed."
-        exit 1
-    fi
-
-    # If all checks pass, execute the recipe
-    display_art
-    gum style --bold --foreground "$THEME_RED" --padding "0 1" "🚀 Launching mapping"
-    echo
-
-    # Execute the run script directly, allowing the user to see its output and interact.
-    mapping_run.sh
-
-    local exit_code=$?
-    echo
-    if [ $exit_code -eq 0 ]; then
-        gum style --foreground 2 "✔ Mapping data recording finished successfully."
-    else
-        gum style --foreground 1 "✖ Mapping data recording exited with an error (code: $exit_code)."
     fi
 }
 
@@ -619,6 +591,141 @@ do_update() {
     gum style --border double --padding "1 5" --border-foreground 2 "✅ EmbodiedOS container updated successfully! ✅"
 }
 
+# --- Mapping --- #
+
+# Displays the help menu for the 'map' command.
+show_map_help() {
+    gum style --bold --foreground $THEME_BLUE "EMOS Map Management Commands"
+    echo "Usage: emos map <subcommand>"
+    echo
+    echo "Available subcommands:"
+    gum style --padding "0 2" "  record   - Start recording a new map (Should be run on board the robot)."
+    gum style --padding "0 2" "  install-editor - Download and install the map editor container."
+    echo
+    gum style --faint "Run commands with emos map <command_name>"
+}
+
+# Runs mapping data recording on the robot.
+# Usage:do_map_record
+do_map_record() {
+
+    # Check if the mapping_run.sh script exists in the user's PATH
+    if ! command -v mapping_run.sh &> /dev/null; then
+        gum style --foreground 1 "✖ Error: The 'mapping_run.sh' script is not found in your PATH."
+        gum style --faint "Please ensure the EmbodiedOS execution environment is correctly installed."
+        exit 1
+    fi
+
+    # If all checks pass, execute the recipe
+    display_art
+    gum style --bold --foreground "$THEME_RED" --padding "0 1" "🚀 Launching mapping"
+    echo
+
+    # Execute the run script directly, allowing the user to see its output and interact.
+    mapping_run.sh
+
+    local exit_code=$?
+    echo
+    if [ $exit_code -eq 0 ]; then
+        gum style --foreground 2 "✔ Mapping data recording finished successfully."
+    else
+        gum style --foreground 1 "✖ Mapping data recording exited with an error (code: $exit_code)."
+    fi
+}
+
+# Downloads and installs the map editor container.
+do_map_install_editor() {
+    display_art
+    gum style --bold --foreground "$THEME_BLUE" "🚀 Starting Map Editor Installation..."
+    echo
+
+    local license_key
+    license_key=$(gum input --placeholder "Please enter your license key to proceed")
+
+    if [ -z "$license_key" ]; then
+        gum style --foreground 1 "✖ Error: A license key is required."
+        exit 1
+    fi
+
+    local API_RESPONSE
+    API_RESPONSE=$(api_validate_license "$license_key")
+    gum style --foreground 2 "✔ License key validated successfully."
+
+    parse_and_export_docker_vars "$API_RESPONSE"
+
+    # Check for and remove existing mapping container
+    local MAPPING_CONTAINER_NAME="emos-mapping"
+    if docker inspect "$MAPPING_CONTAINER_NAME" &> /dev/null; then
+        gum style --foreground 3 --padding "0 1" "[!] An existing '$MAPPING_CONTAINER_NAME' container was found."
+        if ! gum confirm --prompt.foreground $THEME_BLUE --selected.background $THEME_RED "Overwrite existing map editor container?"; then
+            gum style --foreground 1 "✖ Installation aborted by user."
+            exit 1
+        fi
+        run_with_spinner "Removing existing '$MAPPING_CONTAINER_NAME' container..." \
+            "docker rm -f \"$MAPPING_CONTAINER_NAME\"" || exit 1
+    fi
+
+    # Log into docker
+    run_with_spinner "Logging into Docker registry..." \
+        "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin" || exit 1
+
+    # Prepare the mapping image name
+    local BASE_IMAGE="${DOCKER_IMAGE%:*}" # Removes tag
+    local MAPPING_IMAGE_NAME="${BASE_IMAGE}:mapping"
+    export FULL_IMAGE_NAME="${DOCKER_REGISTRY}/${MAPPING_IMAGE_NAME}"
+
+    # Pull the image
+    gum style --bold --foreground "$THEME_BLUE" "Pulling Map Editor container image: $FULL_IMAGE_NAME"
+    gum style --faint "This may take several minutes depending on your network connection."
+    docker pull "$FULL_IMAGE_NAME" || {
+        gum style --foreground 1 "✖ Error: Failed to pull Docker image."
+        exit 1
+    }
+    gum style --foreground 2 "✔ Success: Pulled latest image."
+
+    # Run the container interactively to "install" it (create it with the right settings)
+    gum style --bold --foreground "$THEME_BLUE" "Creating '$MAPPING_CONTAINER_NAME' container..."
+
+    local MAPPING_DOCKER_RUN_CMD="docker run -d --name=\"$MAPPING_CONTAINER_NAME\" -it --device=/dev/dri --group-add video --volume=/tmp/.X11-unix:/tmp/.X11-unix --env=\"DISPLAY=$DISPLAY\" \"$FULL_IMAGE_NAME\""
+
+    eval "$MAPPING_DOCKER_RUN_CMD"
+    local exit_code=$?
+    echo
+
+    run_with_spinner "Stopping and finalizing installation..." "docker stop '$MAPPING_CONTAINER_NAME'"
+
+    if [ $exit_code -eq 0 ]; then
+        gum style --border double --padding "1 5" --border-foreground 2 "✔ Map Editor installed successfully!"
+        gum style --faint "You can start it later with 'emos map start-editor'"
+    else
+        gum style --foreground 1 "✖ Map Editor installation failed (code: $exit_code)."
+    fi
+}
+
+# Handles 'map' subcommands
+# Usage: handle_map_command <subcommand> [args...]
+handle_map_command() {
+    local subcommand="$1"
+    shift # Remove subcommand from arg list
+
+    case "$subcommand" in
+        record)
+            do_map_record
+            ;;
+        install-editor)
+            do_map_install_editor
+            ;;
+        "" | "help" | "--help")
+            show_map_help
+            ;;
+        *)
+            gum style --foreground 1 "✖ Error: Unknown map subcommand '$subcommand'"
+            show_map_help
+            exit 1
+            ;;
+    esac
+}
+
 # --- Main Execution ---
 main() {
     check_dependencies
@@ -642,8 +749,9 @@ main() {
         pull)
             do_pull_recipe "$2"
             ;;
-		map)
-            do_run_mapping
+        map)
+            shift
+            handle_map_command "$@" # Pass all subcommands to handler
             ;;
         status)
             show_status
