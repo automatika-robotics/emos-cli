@@ -213,7 +213,7 @@ cleanup() {
     run_with_spinner "Got Ctrl+C, terminating mapping..." \
     "kill $BAG_PID && docker restart ${CONTAINER_NAME} && sleep 5"
     run_with_spinner "Zipping & Saving Mapped Data..." \
-    "docker exec ${CONTAINER_NAME} bash -c 'tar -czvf ${BAG_PATH}.tar.gz ${BAG_PATH} && rm -rf ${BAG_PATH}'"
+    "docker exec ${CONTAINER_NAME} bash -c 'tar -czvf ${BAG_PATH}.tar.gz -C ${BAG_DIR} ${MAP_NAME} && rm -rf ${BAG_PATH}'"
     success "Map data saved to ${OUTPUT_DIR}.tar.gz"
     exit 0
 }
