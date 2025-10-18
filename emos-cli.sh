@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-# emos - EmbodiedOS Management CLI v0.3.2
+# emos - EmbodiedOS Management CLI v0.3.3
 # ==============================================================================
 
 # --- Configuration ---
-EMOS_VERSION="0.3.2"
+EMOS_VERSION="0.3.3"
 CONFIG_DIR="$HOME/.config/emos"
 RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
@@ -159,6 +159,7 @@ do_list_recipes() {
         table_data+="\n$short_name,\"$long_name\""
     done
 
+    gum style --bold --foreground "$THEME_BLUE" "Recipes available on the robot"
     # Pipe the CSV data into gum table for a pretty output
     echo -e "$table_data" | gum table --selected.foreground "$THEME_RED"
 
