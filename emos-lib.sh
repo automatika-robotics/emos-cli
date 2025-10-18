@@ -33,7 +33,6 @@ warn() {
 error() {
     gum style --foreground 1 "│"
     gum style --foreground 1 "├─ ✖ Error: $1"
-    exit 1
 }
 
 # Usage: print_header "YOUR TITLE"
@@ -57,16 +56,15 @@ run_with_spinner() {
 
   if [ $EXIT_CODE -eq 0 ]; then
     success "$title"
+    rm -f "$tmpfile"
+    return 0
   else
     error "$title"
     gum style --faint "  Command failed with output:"
     gum format -- "$(cat "$tmpfile")"
-    # error() function already exits, but we add this for clarity
-    exit $EXIT_CODE
+    rm -f "$tmpfile"
+    return 1
   fi
-
-  rm -f "$tmpfile"
-  return $EXIT_CODE
 }
 
 # --- Dependency Check ---

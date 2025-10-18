@@ -28,6 +28,7 @@ for arg in "$@"; do
       ;;
     *)
       error "Unknown argument: $arg"
+      exit 1
       ;;
   esac
 done
@@ -43,6 +44,7 @@ fi
 
 if [ -z "$RECIPE_NAME" ]; then
     error "Recipe name was not provided. Usage: $0 --recipe_name=<name>"
+    exit 1
 fi
 
 # --- Configuration & Pre-flight Checks ---
@@ -61,6 +63,7 @@ log "Manifest File: $MANIFEST_FILE"
 
 if [[ ! -f "${MANIFEST_FILE}" ]]; then
     error "Manifest file not found at ${MANIFEST_FILE}"
+    exit 1
 fi
 
 # Extract manifest data
@@ -84,13 +87,14 @@ success "Terminated host ROS processes."
 
 if [ -z "$(docker ps -a -q -f name=^/${CONTAINER_NAME}$)" ]; then
     error "Container '$CONTAINER_NAME' does not exist! Run EMOS Setup first."
+    exit 1
 fi
 
 if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
     run_with_spinner "Stopping existing EMOS container..." "docker stop $CONTAINER_NAME >/dev/null 2>&1" || true
 fi
 
-run_with_spinner "Starting EMOS container..." "docker start $CONTAINER_NAME >/dev/null 2>&1" || error "Failed to start container."
+run_with_spinner "Starting EMOS container..." "docker start $CONTAINER_NAME >/dev/null 2>&1" || error "Failed to start container." && exit 1
 
 
 # --- RMW Configuration ---
@@ -263,4 +267,6 @@ else
     error "Recipe '$RECIPE_NAME' exited with an error (code: $RECIPE_EXIT_CODE)."
 fi
 
+# Restart emos container for cleanup
+run_with_spinner "EMOS container cleanup..." "docker stop $CONTAINER_NAME >/dev/null 2>&1" || true
 
