@@ -36,30 +36,25 @@ error() {
 # A wrapper for gum spin to show a loader for long-running commands
 # Usage: run_with_spinner "Doing a thing..." "my_command --with --args"
 run_with_spinner() {
-    local title="$1"
-    local cmd="$2"
-    local OUTPUT
-    local EXIT_CODE
+  local title="$1"
+  local cmd="$2"
+  local tmpfile
+  tmpfile=$(mktemp)
 
-    # `2>&1` redirects stderr to stdout, so we capture everything.
-    OUTPUT=$(eval "$cmd" 2>&1)
-    EXIT_CODE=$?
+  gum spin --spinner dot --title "$title" -- bash -c "$cmd >$tmpfile 2>&1"
+  local EXIT_CODE=$?
 
-    if [ $EXIT_CODE -eq 0 ]; then
-        # On success, show a brief spinner animation for a polished feel.
-        gum spin --spinner dot --title "$title" -- sleep 1
-        success "$title"
-        return 0
-    else
-        # On failure, print our error header AND the captured output.
-        error "$title"
-        gum style --faint "  The command failed with the following output:"
-        # Use gum format to indent the error message nicely.
-        gum format -- "$OUTPUT"
-        return 1
-    fi
+  if [ $EXIT_CODE -eq 0 ]; then
+    success "$title"
+  else
+    error "$title"
+    gum style --faint "  Command failed with output:"
+    gum format -- "$(cat "$tmpfile")"
+  fi
+
+  rm -f "$tmpfile"
+  return $EXIT_CODE
 }
-
 
 
 print_header() {
@@ -194,12 +189,12 @@ fi
 docker exec ${CONTAINER_NAME} bash -c "mkdir -p ${BAG_DIR}"
 
 # 2. Check if bag already exists in container
-if docker exec ${CONTAINER_NAME} bash -c "[ -d '${BAG_PATH}' ]"; then
-    warn "A map data file already exists at ${OUTPUT_DIR}"
+if docker exec ${CONTAINER_NAME} bash -c "[ -f '${BAG_PATH}.tar.gz' ]"; then
+    warn "A map data file already exists at ${OUTPUT_DIR}.tar.gz"
 
     if gum confirm --prompt.foreground $THEME_BLUE --selected.background $THEME_RED "Do you want to overwrite it?"; then
-        log "Overwriting existing map data at ${OUTPUT_DIR}"
-        docker exec ${CONTAINER_NAME} bash -c "rm -rf '${BAG_PATH}'"
+        log "Overwriting existing map data at ${OUTPUT_DIR}.tar.gz"
+        docker exec ${CONTAINER_NAME} bash -c "rm -f '${BAG_PATH}.tar.gz'"
     else
         error "User chose not to overwrite existing map data. Aborting."
     fi
@@ -215,17 +210,16 @@ docker exec ${CONTAINER_NAME} bash -c "source ros_entrypoint.sh && \
 BAG_PID=$!
 
 cleanup() {
-    log "Got Ctrl+C, terminating mapping..."
+    run_with_spinner "Got Ctrl+C, terminating mapping..." \
+    "kill $BAG_PID && docker restart ${CONTAINER_NAME} && sleep 5"
     run_with_spinner "Zipping & Saving Mapped Data..." \
-    "tar -czvf $BAG_PATH.tar.gz $BAG_PATH && rm -rf $BAG_PATH"
+    "docker exec ${CONTAINER_NAME} bash -c 'tar -czvf ${BAG_PATH}.tar.gz ${BAG_PATH} && rm -rf ${BAG_PATH}'"
     success "Map data saved to ${OUTPUT_DIR}.tar.gz"
-    kill $BAG_PID  # Kill bag process
     exit 0
 }
 
-log "Mapping Data Recording Started..."
-log "Output bag file: ${OUTPUT_DIR}.tar.gz"
-log "Press Ctrl+C to stop both processes."
+log "Map Data Recording Started ..."
+log "Press Ctrl+C once to end data recording process."
 
 # Trap Ctrl+C (SIGINT) and call cleanup
 trap cleanup SIGINT
