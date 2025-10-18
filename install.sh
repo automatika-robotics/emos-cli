@@ -2,10 +2,22 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # --- Configuration ---
-EMOS_CLI_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/emos-cli.sh"
-RECIPE_RUN_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/recipe_run.sh"
-MAPPING_RUN_URL="https://raw.githubusercontent.com/automatika-robotics/emos-cli/main/mapping_run.sh"
-INSTALL_PATH="/usr/local/bin"
+GITHUB_ORG="automatika-robotics"
+REPO="emos-cli"
+BRANCH="main"
+BASE_URL="https://raw.githubusercontent.com/$GITHUB_ORG/$REPO/$BRANCH"
+
+EMOS_CLI_URL="$BASE_URL/emos-cli.sh"
+RECIPE_RUN_URL="$BASE_URL/recipe_run.sh"
+MAPPING_RUN_URL="$BASE_URL/mapping_run.sh"
+EMOS_LIB_URL="$BASE_URL/emos-lib.sh"
+
+# Install Locations
+BIN_PATH="/usr/local/bin"
+LIB_DIR="/usr/local/lib/emos"
+CLI_NAME="emos"
+CLI_SYMLINK="$BIN_PATH/$CLI_NAME"
+CLI_TARGET_SCRIPT="$LIB_DIR/emos-cli.sh"
 
 # --- UI Functions ---
 info() {
@@ -34,6 +46,7 @@ check_docker() {
     fi
     info "Docker installation found."
 }
+
 detect_package_manager() {
     if command -v apt-get &>/dev/null; then
         echo "apt"
@@ -49,6 +62,7 @@ detect_package_manager() {
         echo "unknown"
     fi
 }
+
 install_dependencies() {
     info "Detecting package manager..."
     PKG_MANAGER=$(detect_package_manager)
@@ -84,36 +98,55 @@ install_dependencies() {
     success "Dependencies installed."
 }
 
-install_cli() {
-    info "Downloading the latest emos CLI tools..."
-
-    if curl -sSLf "$EMOS_CLI_URL" -o "/tmp/emos" && \
-       curl -sSLf "$RECIPE_RUN_URL" -o "/tmp/recipe_run.sh" && \
-	   curl -sSLf "$MAPPING_RUN_URL" -o "/tmp/mapping_run.sh"; then
-
-        info "Installing emos to $INSTALL_PATH/emos..."
-        mv "/tmp/emos" "$INSTALL_PATH/emos"
-        chmod +x "$INSTALL_PATH/emos"
-
-        info "Installing recipe_run.sh to $INSTALL_PATH/recipe_run.sh..."
-        mv "/tmp/recipe_run.sh" "$INSTALL_PATH/recipe_run.sh"
-        chmod +x "$INSTALL_PATH/recipe_run.sh"
-
-		info "Installing mapping_run.sh to $INSTALL_PATH/mapping_run.sh..."
-        mv "/tmp/mapping_run.sh" "$INSTALL_PATH/mapping_run.sh"
-        chmod +x "$INSTALL_PATH/mapping_run.sh"
-
-        success "emos CLI tools installed successfully."
-    else
-        error "Failed to download one or more CLI tools. Check the URLs and your connection."
+# Helper function for downloading
+download_file() {
+    local url="$1"
+    local dest="$2"
+    if ! curl -sSLf "$url" -o "$dest"; then
+        error "Failed to download: $url"
     fi
+}
+
+install_cli() {
+    info "Creating directories..."
+    mkdir -p "$LIB_DIR"
+    mkdir -p "$BIN_PATH"
+
+    info "Downloading the latest emos CLI tools to $LIB_DIR..."
+
+    download_file "$EMOS_CLI_URL" "$LIB_DIR/emos-cli.sh"
+    download_file "$RECIPE_RUN_URL" "$LIB_DIR/recipe_run.sh"
+    download_file "$MAPPING_RUN_URL" "$LIB_DIR/mapping_run.sh"
+    download_file "$EMOS_LIB_URL" "$LIB_DIR/emos-lib.sh"
+
+    info "Setting permissions..."
+    chmod +x "$LIB_DIR/emos-cli.sh"
+    chmod +x "$LIB_DIR/recipe_run.sh"
+    chmod +x "$LIB_DIR/mapping_run.sh"
+
+    info "Creating symlink at $CLI_SYMLINK..."
+    # Use -f to force overwrite any existing symlink
+    ln -s -f "$CLI_TARGET_SCRIPT" "$CLI_SYMLINK"
+
+    success "emos CLI tools installed successfully."
 }
 
 update_cli() {
     info "Checking for emos CLI updates..."
 
-    if [ ! -f "$INSTALL_PATH/emos" ]; then
-        error "emos is not installed. Cannot update."
+    # Check if the symlink exists
+    if [ ! -L "$CLI_SYMLINK" ]; then
+        error "emos is not installed. Cannot update. Run the installer without arguments."
+    fi
+
+    # Grep the target script, not the symlink
+    local local_version
+    local_version=$(grep '^EMOS_VERSION=' "$CLI_TARGET_SCRIPT" | cut -d'=' -f2 | tr -d '"')
+
+    if [ -z "$local_version" ]; then
+         info "Could not determine local version. Forcing update..."
+         install_cli
+         exit 10 # Signal update
     fi
 
     local remote_version
@@ -122,18 +155,15 @@ update_cli() {
         error "Could not determine the latest version available for download."
     fi
 
-    local local_version
-    local_version=$(grep '^EMOS_VERSION=' "$INSTALL_PATH/emos" | cut -d'=' -f2 | tr -d '"')
-
     info "Local version: $local_version, Remote version: $remote_version"
 
     if [ "$remote_version" != "$local_version" ]; then
         info "A new version ($remote_version) is available. Updating all tools..."
         install_cli
-        exit 10
+        exit 10 # Signal that an update was performed
     else
         info "You already have the latest version of the emos CLI."
-        exit 0
+        exit 0 # Signal "up to date"
     fi
 }
 
@@ -157,5 +187,3 @@ main() {
 }
 
 main "$@"
-
-
