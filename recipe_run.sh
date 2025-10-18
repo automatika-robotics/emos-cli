@@ -5,61 +5,11 @@ set -e
 # EMOS - RECIPE RUNNER
 # =========================
 
-# --- Theme ---
-THEME_RED="#d54e53"
-THEME_BLUE="#81a2be"
-THEME_NEUTRAL="#EEF2F3"
+# Get the directory where the script is located
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
-# A wrapper for gum logging functions to standardize output format
-# Usage: log "Your message here"
-log() {
-    gum style --foreground 240 "│"
-    gum style --foreground 250 "├─ $1"
-}
-
-success() {
-    gum style --foreground 2 "│"
-    gum style --foreground 2 "├─ ✔ Success: $1"
-}
-
-warn() {
-    gum style --foreground 3 "│"
-    gum style --foreground 3 "├─ ! Warning: $1"
-}
-
-error() {
-    gum style --foreground 1 "│"
-    gum style --foreground 1 "├─ ✖ Error: $1"
-    exit 1
-}
-
-# A wrapper for gum spin to show a loader for long-running commands
-# Usage: run_with_spinner "Doing a thing..." "my_command --with --args"
-run_with_spinner() {
-  local title="$1"
-  local cmd="$2"
-  local tmpfile
-  tmpfile=$(mktemp)
-
-  gum spin --spinner dot --title "$title" -- bash -c "$cmd >$tmpfile 2>&1"
-  local EXIT_CODE=$?
-
-  if [ $EXIT_CODE -eq 0 ]; then
-    success "$title"
-  else
-    error "$title"
-    gum style --faint "  Command failed with output:"
-    gum format -- "$(cat "$tmpfile")"
-  fi
-
-  rm -f "$tmpfile"
-  return $EXIT_CODE
-}
-
-
-print_header() {
-    gum style --bold --padding "1 2" --border thick --border-foreground "$THEME_BLUE" --foreground "$THEME_BLUE" "$1"
-}
+# Source the common library file
+source "$SCRIPT_DIR/emos-lib.sh"
 
 # --- Argument Parsing ---
 EMOS_ROOT="/emos"

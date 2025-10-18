@@ -21,10 +21,22 @@ CREDENTIALS_ENDPOINT="$API_BASE_URL/registrations/credentials"
 RECIPES_LIST_ENDPOINT="$API_BASE_URL/recipes"
 RECIPE_PULL_ENDPOINT="$API_BASE_URL/recipes/%s" # %s is a placeholder for the filename
 
-# --- Theme ---
-THEME_RED="#d54e53"
-THEME_BLUE="#81a2be"
-THEME_NEUTRAL="#EEF2F3"
+# --- Globals & Helpers ---
+# Get the directory where this script is located, even if it's a symlink
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SCRIPT_SOURCE" ]; do # resolve $SCRIPT_SOURCE until the file is no longer a symlink
+  SCRIPT_DIR="$( cd -P "$( dirname "$SCRIPT_SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+  [[ $SCRIPT_SOURCE != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE" # if $SCRIPT_SOURCE was a relative symlink
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SCRIPT_SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+# Source the library from the same directory
+source "$SCRIPT_DIR/emos-lib.sh"
+
+# Define paths to helper scripts
+RECIPE_RUNNER="$SCRIPT_DIR/recipe_run.sh"
+MAPPING_RUNNER="$SCRIPT_DIR/mapping_run.sh"
 
 # --- Styling and UI Functions ---
 display_art() {
@@ -42,43 +54,7 @@ EOF
     echo
 }
 
-# A wrapper for gum spin to show a loader for long-running commands
-# Usage: run_with_spinner "Doing a thing..." "my_command --with --args"
-run_with_spinner() {
-  local title="$1"
-  local cmd="$2"
-  local tmpfile
-  tmpfile=$(mktemp)
-
-  gum spin --spinner dot --title "$title" -- bash -c "$cmd >$tmpfile 2>&1"
-  local EXIT_CODE=$?
-
-  if [ $EXIT_CODE -eq 0 ]; then
-    success "$title"
-  else
-    error "$title"
-    gum style --faint "  Command failed with output:"
-    gum format -- "$(cat "$tmpfile")"
-  fi
-
-  rm -f "$tmpfile"
-  return $EXIT_CODE
-}
-
 # --- Core Logic Functions ---
-check_dependencies() {
-    local missing_deps=()
-    for dep in gum docker curl jq; do
-        if ! command -v "$dep" &> /dev/null; then
-            missing_deps+=("$dep")
-        fi
-    done
-    if [ ${#missing_deps[@]} -ne 0 ]; then
-        gum style --foreground 1 "Error: Missing required dependencies: ${missing_deps[*]}. Please install them to continue."
-        exit 1
-    fi
-}
-
 show_help() {
     gum style --bold --foreground $THEME_BLUE "EmbodiedOS Management CLI"
     echo "Usage: emos [command]"
@@ -205,9 +181,9 @@ do_run_recipe() {
     # Shift the recipe_name off the argument list. The rest ($@) are extra args.
     shift
 
-    # Check if the recipe_run.sh script exists in the user's PATH
-    if ! command -v recipe_run.sh &> /dev/null; then
-        gum style --foreground 1 "✖ Error: The 'recipe_run.sh' script is not found in your PATH."
+    # Check if the recipe_run.sh script exists in the correct location
+    if [ ! -x "$RECIPE_RUNNER" ]; then
+        gum style --foreground 1 "✖ Error: The 'recipe_run.sh' script is not found at $RECIPE_RUNNER."
         gum style --faint "Please ensure the EmbodiedOS execution environment is correctly installed."
         exit 1
     fi
@@ -227,7 +203,7 @@ do_run_recipe() {
 
     # Execute the run script directly, allowing the user to see its output and interact.
     # The "$@" ensures extra arguments are passed along correctly.
-    recipe_run.sh --recipe_name="$recipe_name" "$@"
+    "$RECIPE_RUNNER" --recipe_name="$recipe_name" "$@"
 
     local exit_code=$?
     echo
@@ -308,12 +284,12 @@ do_pull_recipe() {
 
     # Download the recipe zip file
     run_with_spinner "Downloading from $download_url..." \
-        "curl -sSLf \"$download_url\" -o \"$temp_zip_path\"" || exit 1
+        "curl -sSLf \"$download_url\" -o \"$temp_zip_path\""
 
     # Unzip the file into the recipe-specific directory
     # The -o flag overwrites existing files without prompting
     run_with_spinner "Unzipping recipe to $recipe_dest_dir..." \
-        "unzip -o \"$temp_zip_path\" -d \"$recipe_dest_dir\"" || exit 1
+        "unzip -o \"$temp_zip_path\" -d \"$recipe_dest_dir\""
 
     # Clean up the downloaded zip file
     rm "$temp_zip_path"
@@ -413,7 +389,7 @@ remove_existing_container() {
         gum style --bold --foreground "$THEME_BLUE" "Removing existing EmbodiedOS container..."
         # Use a single, atomic force-remove command.
         run_with_spinner "Forcibly removing container '$CONTAINER_NAME'..." \
-            "docker rm -f \"$CONTAINER_NAME\"" || exit 1
+            "docker rm -f \"$CONTAINER_NAME\""
     fi
 }
 
@@ -424,7 +400,7 @@ deploy_container() {
     export FULL_IMAGE_NAME="${DOCKER_REGISTRY}/${DOCKER_IMAGE}"
 
     run_with_spinner "Logging into Docker registry..." \
-        "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin" || exit 1
+        "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin"
 
     gum style --bold --foreground "$THEME_BLUE" "Pulling EmbodiedOS container image..."
     gum style --faint "This may take several minutes depending on your network connection."
@@ -435,7 +411,7 @@ deploy_container() {
     gum style --foreground 2 "✔ Success: Pulled latest image."
 
     run_with_spinner "Starting EmbodiedOS container..." \
-        "$DOCKER_RUN_CMD" || exit 1
+        "$DOCKER_RUN_CMD"
 }
 
 # Clones the deployment repo, and copies the 'robot' directory into ~/emos.
@@ -529,9 +505,9 @@ EOF
 )
     if gum confirm --prompt.foreground $THEME_BLUE --selected.background $THEME_RED "Create/overwrite systemd service file for auto-restart?"; then
         echo "$SERVICE_FILE_CONTENT" | sudo tee "/etc/systemd/system/${SERVICE_NAME}" > /dev/null
-        run_with_spinner "Reloading systemd daemon..." "sudo systemctl daemon-reload" || exit 1
-        run_with_spinner "Enabling emos service..." "sudo systemctl enable ${SERVICE_NAME}" || exit 1
-        run_with_spinner "Activating emos service..." "sudo systemctl start ${SERVICE_NAME}" || exit 1
+        run_with_spinner "Reloading systemd daemon..." "sudo systemctl daemon-reload"
+        run_with_spinner "Enabling emos service..." "sudo systemctl enable ${SERVICE_NAME}"
+        run_with_spinner "Activating emos service..." "sudo systemctl start ${SERVICE_NAME}"
     else
         gum style --foreground 3 "Skipping systemd service creation."
     fi
@@ -602,9 +578,9 @@ show_map_help() {
 # Usage:do_map_record
 do_map_record() {
 
-    # Check if the mapping_run.sh script exists in the user's PATH
-    if ! command -v mapping_run.sh &> /dev/null; then
-        gum style --foreground 1 "✖ Error: The 'mapping_run.sh' script is not found in your PATH."
+    # Check if the mapping_run.sh script exists in the correct location
+    if [ ! -x "$MAPPING_RUNNER" ]; then
+        gum style --foreground 1 "✖ Error: The 'mapping_run.sh' script is not found at $MAPPING_RUNNER."
         gum style --faint "Please ensure the EmbodiedOS execution environment is correctly installed."
         exit 1
     fi
@@ -615,7 +591,7 @@ do_map_record() {
     echo
 
     # Execute the run script directly, allowing the user to see its output and interact.
-    mapping_run.sh
+    "$MAPPING_RUNNER"
 
     local exit_code=$?
     echo
@@ -655,12 +631,12 @@ do_map_install_editor() {
             exit 1
         fi
         run_with_spinner "Removing existing '$MAPPING_CONTAINER_NAME' container..." \
-            "docker rm -f \"$MAPPING_CONTAINER_NAME\"" || exit 1
+            "docker rm -f \"$MAPPING_CONTAINER_NAME\""
     fi
 
     # Log into docker
     run_with_spinner "Logging into Docker registry..." \
-        "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin" || exit 1
+        "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin"
 
     # Prepare the mapping image name
     local BASE_IMAGE="${DOCKER_IMAGE%:*}" # Removes tag
@@ -728,7 +704,7 @@ do_map_edit() {
         gum style --faint "Please run 'emos map install-editor' first."
         exit 1
     fi
-    run_with_spinner "Starting map editor container..." "docker start '$MAPPING_CONTAINER_NAME'" || exit 1
+    run_with_spinner "Starting map editor container..." "docker start '$MAPPING_CONTAINER_NAME'"
 
     display_art
     gum style --bold --foreground "$THEME_BLUE" "🚀 Processing Map File: $map_name"
@@ -738,8 +714,8 @@ do_map_edit() {
     xhost +local:docker &>/dev/null
 
     # Copy and extract the bag file inside the container
-    run_with_spinner "Copying '$bag_filename' into container..." "docker cp '$bag_file_path' '$MAPPING_CONTAINER_NAME:/tmp/'" || exit 1
-    run_with_spinner "Extracting bag file inside container..." "docker exec '$MAPPING_CONTAINER_NAME' tar -xzf '/tmp/$bag_filename' -C /tmp/" || exit 1
+    run_with_spinner "Copying '$bag_filename' into container..." "docker cp '$bag_file_path' '$MAPPING_CONTAINER_NAME:/tmp/'"
+    run_with_spinner "Extracting bag file inside container..." "docker exec '$MAPPING_CONTAINER_NAME' tar -xzf '/tmp/$bag_filename' -C /tmp/"
 
     # Run the editor process in the container (detached)
     gum style --bold --foreground "$THEME_BLUE" "Starting the editor..."
@@ -772,7 +748,7 @@ do_map_edit() {
 
     # Copy the output file from the container to the host
     local host_output_path="./${map_name}.pcd"
-    run_with_spinner "Copying '$map_name.pcd' to host at '$host_output_path'..." "docker cp '$MAPPING_CONTAINER_NAME:$output_pcd_path_container' '$host_output_path'" || exit 1
+    run_with_spinner "Copying '$map_name.pcd' to host at '$host_output_path'..." "docker cp '$MAPPING_CONTAINER_NAME:$output_pcd_path_container' '$host_output_path'"
 
     # Cleanup
     gum style --faint "Cleaning up..."
