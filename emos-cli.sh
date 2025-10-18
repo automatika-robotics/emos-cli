@@ -42,31 +42,27 @@ EOF
     echo
 }
 
+# A wrapper for gum spin to show a loader for long-running commands
+# Usage: run_with_spinner "Doing a thing..." "my_command --with --args"
 run_with_spinner() {
-    local title="$1"
-    local cmd="$2"
-    local OUTPUT
-    local EXIT_CODE
+  local title="$1"
+  local cmd="$2"
+  local tmpfile
+  tmpfile=$(mktemp)
 
-    # use `eval` to correctly handle commands with pipes and quotes.
-    # `2>&1` redirects stderr to stdout
-    OUTPUT=$(eval "$cmd" 2>&1)
-    EXIT_CODE=$?
+  gum spin --spinner dot --title "$title" -- bash -c "$cmd >$tmpfile 2>&1"
+  local EXIT_CODE=$?
 
-    if [ $EXIT_CODE -eq 0 ]; then
-        # On success, show a brief spinner animation.
-        gum spin --spinner dot --title "$title" -- sleep 1
-        gum style --foreground 2 "✔ Success:" "$title"
-        [ -n "$OUTPUT" ] && echo "$OUTPUT"
-        return 0
-    else
-        # On failure, print our error header AND the captured output.
-        gum style --foreground 1 "✖ Error:" "$title"
-        gum style --faint "  The command failed with the following output:"
-        # Use gum format to indent the error message nicely.
-        gum format -- "$OUTPUT"
-        return 1
-    fi
+  if [ $EXIT_CODE -eq 0 ]; then
+    success "$title"
+  else
+    error "$title"
+    gum style --faint "  Command failed with output:"
+    gum format -- "$(cat "$tmpfile")"
+  fi
+
+  rm -f "$tmpfile"
+  return $EXIT_CODE
 }
 
 # --- Core Logic Functions ---
