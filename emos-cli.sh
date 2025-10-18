@@ -531,6 +531,7 @@ EOF
         echo "$SERVICE_FILE_CONTENT" | sudo tee "/etc/systemd/system/${SERVICE_NAME}" > /dev/null
         run_with_spinner "Reloading systemd daemon..." "sudo systemctl daemon-reload" || exit 1
         run_with_spinner "Enabling emos service..." "sudo systemctl enable ${SERVICE_NAME}" || exit 1
+        run_with_spinner "Activating emos service..." "sudo systemctl start ${SERVICE_NAME}" || exit 1
     else
         gum style --foreground 3 "Skipping systemd service creation."
     fi
