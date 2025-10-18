@@ -707,6 +707,12 @@ do_map_edit() {
         gum style --faint "Please run 'emos map install-editor' first."
         exit 1
     fi
+
+    # Stop the container if its started
+    if [ "$(docker ps -q -f name=$MAPPING_CONTAINER_NAME)" ]; then
+        run_with_spinner "Stopping existing EMOS container..." "docker stop $MAPPING_CONTAINER_NAME >/dev/null 2>&1" || true
+    fi
+
     run_with_spinner "Starting map editor container..." \
         "docker start '$MAPPING_CONTAINER_NAME'" || exit 1
 
