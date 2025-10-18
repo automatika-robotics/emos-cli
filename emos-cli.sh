@@ -154,8 +154,6 @@ show_help() {
 
 # Lists available automation recipes found in the recipes directory.
 do_list_recipes() {
-    display_art
-
     # Check if the recipes directory exists and is not empty
     if [ ! -d "$RECIPES_DIR" ] || ! ls -d "$RECIPES_DIR"/*/ >/dev/null 2>&1; then
         gum style --foreground 3 "No recipes found in '$RECIPES_DIR'."
@@ -242,8 +240,6 @@ do_run_recipe() {
 
 # Lists available recipes from the remote API.
 do_list_remote_recipes() {
-    display_art
-
     local TMP_FILE
     TMP_FILE=$(mktemp)
 
@@ -308,7 +304,6 @@ do_pull_recipe() {
     # Ensure the destination directory exists
     mkdir -p "$recipe_dest_dir"
 
-    display_art
     gum style --bold --foreground "$THEME_BLUE" "Installing recipe: $recipe_name"
 
     # Download the recipe zip file
