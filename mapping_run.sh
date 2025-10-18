@@ -85,7 +85,7 @@ mkdir -p "${LOG_DIR}"
 log "All output will be saved to: ${LOG_FILE}"
 
 run_with_spinner "Launching mapping hardware..." \
-    "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $MAPPING_LAUNCH_FILE'"
+    "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $MAPPING_LAUNCH_FILE'" || exit 1
 
 
 # --- Node Verification ---
@@ -119,7 +119,7 @@ fi
 print_header "FINAL CONFIGURATION"
 
 run_with_spinner "Deactivating autonomous mode..." \
-"docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ./$EMOS_ROOT/robot/scripts/deactivate_autonomous_mode.sh'"
+"docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ./$EMOS_ROOT/robot/scripts/deactivate_autonomous_mode.sh'" || exit 1
 
 # --- Recipe Execution ---
 print_header "LAUNCHING DATA RECORDING"
@@ -161,9 +161,9 @@ BAG_PID=$!
 
 cleanup() {
     run_with_spinner "Got Ctrl+C, terminating mapping..." \
-    "kill $BAG_PID && docker restart ${CONTAINER_NAME} && sleep 5"
+        "kill $BAG_PID && docker restart ${CONTAINER_NAME} && sleep 5" || exit 1
     run_with_spinner "Zipping & Saving Mapped Data..." \
-    "docker exec ${CONTAINER_NAME} bash -c 'tar -czvf ${BAG_PATH}.tar.gz -C ${BAG_DIR} ${MAP_NAME} && rm -rf ${BAG_PATH}'"
+        "docker exec ${CONTAINER_NAME} bash -c 'tar -czvf ${BAG_PATH}.tar.gz -C ${BAG_DIR} ${MAP_NAME} && rm -rf ${BAG_PATH}'" || exit 1
     success "Map data saved to ${OUTPUT_DIR}.tar.gz"
     exit 0
 }

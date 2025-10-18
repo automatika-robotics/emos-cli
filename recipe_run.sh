@@ -136,7 +136,7 @@ if [[ "$RMW_IMPLEMENTATION" == "rmw_zenoh_cpp" ]]; then
 	# Start zenoh router inside container, detached
 	run_with_spinner "Starting zenoh router..."\
 					 "docker exec -d $CONTAINER_NAME bash -c \
-		             'source ros_entrypoint.sh && ros2 run rmw_zenoh_cpp rmw_zenohd'"
+		             'source ros_entrypoint.sh && ros2 run rmw_zenoh_cpp rmw_zenohd'" || exit 1
 	# Give it a moment to start
 	sleep 2
 
@@ -164,7 +164,7 @@ fi
 print_header "HARDWARE & SENSOR LAUNCH"
 
 run_with_spinner "Launching robot base hardware..." \
-    "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_robot.py'"
+    "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_robot.py'" || exit 1
 
 for sensor in "${ROBOT_SENSORS[@]}"; do
     CONFIG_FILE=""
@@ -179,10 +179,10 @@ for sensor in "${ROBOT_SENSORS[@]}"; do
 
     if [[ -n "$CONFIG_FILE" ]]; then
         run_with_spinner "Launching sensor: $sensor with custom config from $CONFIG_FILE..." \
-            "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_${sensor}.py config_file:=$CONFIG_FILE'"
+            "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_${sensor}.py config_file:=$CONFIG_FILE'" || exit 1
     else
         run_with_spinner "Launching sensor: $sensor with default config..." \
-            "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_${sensor}.py'"
+            "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ros2 launch $EMOS_ROOT/robot/launch/bringup_${sensor}.py'" || exit 1
     fi
 done
 
@@ -227,11 +227,11 @@ print_header "FINAL CONFIGURATION"
 
 if [[ "$ACTIVATE_AUTONOMOUS_MODE" == "true" ]]; then
   run_with_spinner "Activating autonomous mode..." \
-    "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ./$EMOS_ROOT/robot/scripts/activate_autonomous_mode.sh'"
+    "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ./$EMOS_ROOT/robot/scripts/activate_autonomous_mode.sh'" || exit 1
   warn "ATTENTION: Autonomous Mode is now ON."
 else
   run_with_spinner "Deactivating autonomous mode..." \
-    "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ./$EMOS_ROOT/robot/scripts/deactivate_autonomous_mode.sh'"
+    "docker exec -d $CONTAINER_NAME bash -c 'source ros_entrypoint.sh && ./$EMOS_ROOT/robot/scripts/deactivate_autonomous_mode.sh'" || exit 1
 fi
 
 # --- Recipe Execution ---
@@ -242,7 +242,7 @@ log "All output will be saved to: ${LOG_FILE}"
 
 if [[ "${RUN_WEB_CLIENT}" == "true" ]]; then
     run_with_spinner "Starting web client in background..." \
-        "docker exec -d ${CONTAINER_NAME} bash -c 'source ros_entrypoint.sh && ros2 run automatika_embodied_agents tiny_web_client'"
+        "docker exec -d ${CONTAINER_NAME} bash -c 'source ros_entrypoint.sh && ros2 run automatika_embodied_agents tiny_web_client'" || exit 1
     log "Web client should be available at http://<ROBOT_IP>:8080"
 fi
 

@@ -1,17 +1,16 @@
 #!/bin/bash
 
 # ==============================================================================
-# emos - EmbodiedOS Management CLI v0.3.1
+# emos - EmbodiedOS Management CLI v0.3.2
 # ==============================================================================
 
 # --- Configuration ---
-EMOS_VERSION="0.3.1"
+EMOS_VERSION="0.3.2"
 CONFIG_DIR="$HOME/.config/emos"
 RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
 CONTAINER_NAME="emos"
 SERVICE_NAME="emos.service"
-DOCKER_RUN_CMD="docker run -d -it --restart always --privileged -v /dev/bus/usb:/dev/bus/usb -v $HOME/emos:/emos --name \"\$CONTAINER_NAME\" --network host --runtime nvidia --gpus=all \"\$FULL_IMAGE_NAME\""
 GITHUB_ORG="automatika-robotics"
 INSTALLER_URL="https://raw.githubusercontent.com/$GITHUB_ORG/emos-cli/main/install.sh"
 
@@ -284,12 +283,12 @@ do_pull_recipe() {
 
     # Download the recipe zip file
     run_with_spinner "Downloading from $download_url..." \
-        "curl -sSLf \"$download_url\" -o \"$temp_zip_path\""
+        "curl -sSLf \"$download_url\" -o \"$temp_zip_path\"" || exit 1
 
     # Unzip the file into the recipe-specific directory
     # The -o flag overwrites existing files without prompting
     run_with_spinner "Unzipping recipe to $recipe_dest_dir..." \
-        "unzip -o \"$temp_zip_path\" -d \"$recipe_dest_dir\""
+        "unzip -o \"$temp_zip_path\" -d \"$recipe_dest_dir\"" || exit 1
 
     # Clean up the downloaded zip file
     rm "$temp_zip_path"
@@ -389,7 +388,7 @@ remove_existing_container() {
         gum style --bold --foreground "$THEME_BLUE" "Removing existing EmbodiedOS container..."
         # Use a single, atomic force-remove command.
         run_with_spinner "Forcibly removing container '$CONTAINER_NAME'..." \
-            "docker rm -f \"$CONTAINER_NAME\""
+            "docker rm -f \"$CONTAINER_NAME\"" || exit 1
     fi
 }
 
@@ -400,7 +399,7 @@ deploy_container() {
     export FULL_IMAGE_NAME="${DOCKER_REGISTRY}/${DOCKER_IMAGE}"
 
     run_with_spinner "Logging into Docker registry..." \
-        "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin"
+        "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin" || exit 1
 
     gum style --bold --foreground "$THEME_BLUE" "Pulling EmbodiedOS container image..."
     gum style --faint "This may take several minutes depending on your network connection."
@@ -411,7 +410,7 @@ deploy_container() {
     gum style --foreground 2 "✔ Success: Pulled latest image."
 
     run_with_spinner "Starting EmbodiedOS container..." \
-        "$DOCKER_RUN_CMD"
+        "docker run -d -it --restart always --privileged -v /dev/bus/usb:/dev/bus/usb -v $HOME/emos:/emos --name \"$CONTAINER_NAME\" --network host --runtime nvidia --gpus=all \"$FULL_IMAGE_NAME\"" || exit 1
 }
 
 # Clones the deployment repo, and copies the 'robot' directory into ~/emos.
@@ -506,8 +505,10 @@ EOF
     if gum confirm --prompt.foreground $THEME_BLUE --selected.background $THEME_RED "Create/overwrite systemd service file for auto-restart?"; then
         echo "$SERVICE_FILE_CONTENT" | sudo tee "/etc/systemd/system/${SERVICE_NAME}" > /dev/null
         run_with_spinner "Reloading systemd daemon..." "sudo systemctl daemon-reload"
-        run_with_spinner "Enabling emos service..." "sudo systemctl enable ${SERVICE_NAME}"
-        run_with_spinner "Activating emos service..." "sudo systemctl start ${SERVICE_NAME}"
+        run_with_spinner "Enabling emos service..." \
+            "sudo systemctl enable ${SERVICE_NAME}" || exit 1
+        run_with_spinner "Activating emos service..." \
+            "sudo systemctl start ${SERVICE_NAME}" || exit 1
     else
         gum style --foreground 3 "Skipping systemd service creation."
     fi
@@ -631,12 +632,12 @@ do_map_install_editor() {
             exit 1
         fi
         run_with_spinner "Removing existing '$MAPPING_CONTAINER_NAME' container..." \
-            "docker rm -f \"$MAPPING_CONTAINER_NAME\""
+            "docker rm -f \"$MAPPING_CONTAINER_NAME\"" || exit 1
     fi
 
     # Log into docker
     run_with_spinner "Logging into Docker registry..." \
-        "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin"
+        "echo \"$DOCKER_TOKEN\" | docker login \"$DOCKER_REGISTRY\" -u \"$DOCKER_USER\" --password-stdin" || exit 1
 
     # Prepare the mapping image name
     local BASE_IMAGE="${DOCKER_IMAGE%:*}" # Removes tag
@@ -661,7 +662,8 @@ do_map_install_editor() {
     local exit_code=$?
     echo
 
-    run_with_spinner "Stopping and finalizing installation..." "docker stop '$MAPPING_CONTAINER_NAME'"
+    run_with_spinner "Stopping and finalizing installation..." \
+        "docker stop '$MAPPING_CONTAINER_NAME'" || exit 1
 
     if [ $exit_code -eq 0 ]; then
         gum style --border double --padding "1 5" --border-foreground 2 "✔ Map Editor installed successfully!"
@@ -704,7 +706,8 @@ do_map_edit() {
         gum style --faint "Please run 'emos map install-editor' first."
         exit 1
     fi
-    run_with_spinner "Starting map editor container..." "docker start '$MAPPING_CONTAINER_NAME'"
+    run_with_spinner "Starting map editor container..." \
+        "docker start '$MAPPING_CONTAINER_NAME'" || exit 1
 
     display_art
     gum style --bold --foreground "$THEME_BLUE" "🚀 Processing Map File: $map_name"
@@ -714,8 +717,10 @@ do_map_edit() {
     xhost +local:docker &>/dev/null
 
     # Copy and extract the bag file inside the container
-    run_with_spinner "Copying '$bag_filename' into container..." "docker cp '$bag_file_path' '$MAPPING_CONTAINER_NAME:/tmp/'"
-    run_with_spinner "Extracting bag file inside container..." "docker exec '$MAPPING_CONTAINER_NAME' tar -xzf '/tmp/$bag_filename' -C /tmp/"
+    run_with_spinner "Copying '$bag_filename' into container..." \
+        "docker cp '$bag_file_path' '$MAPPING_CONTAINER_NAME:/tmp/'" || exit 1
+    run_with_spinner "Extracting bag file inside container..." \
+        "docker exec '$MAPPING_CONTAINER_NAME' tar -xzf '/tmp/$bag_filename' -C /tmp/" || exit 1
 
     # Run the editor process in the container (detached)
     gum style --bold --foreground "$THEME_BLUE" "Starting the editor..."
@@ -748,13 +753,15 @@ do_map_edit() {
 
     # Copy the output file from the container to the host
     local host_output_path="./${map_name}.pcd"
-    run_with_spinner "Copying '$map_name.pcd' to host at '$host_output_path'..." "docker cp '$MAPPING_CONTAINER_NAME:$output_pcd_path_container' '$host_output_path'"
+    run_with_spinner "Copying '$map_name.pcd' to host at '$host_output_path'..." \
+        "docker cp '$MAPPING_CONTAINER_NAME:$output_pcd_path_container' '$host_output_path'" || exit 1
 
     # Cleanup
     gum style --faint "Cleaning up..."
     # Clean up files inside the container in the background
     docker exec "$MAPPING_CONTAINER_NAME" rm -rf "/tmp/$map_name" "/tmp/dump" "/tmp/$bag_filename" "$output_pcd_path_container"
-    run_with_spinner "Stopping the map editor container..." "docker stop '$MAPPING_CONTAINER_NAME'"
+    run_with_spinner "Stopping the map editor container..." \
+        "docker stop '$MAPPING_CONTAINER_NAME'" || exit 1
     xhost -local:docker &>/dev/null
 
     gum style --border double --padding "1 5" --border-foreground 2 "🎉 Map editing complete! Your map is ready at '$host_output_path' 🎉"
