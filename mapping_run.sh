@@ -26,16 +26,8 @@ DATETIME=$(date +"%Y%m%d_%H%M%S")
 MAPPING_LAUNCH_FILE="$EMOS_ROOT/robot/launch/bringup_mapping.py"
 LOG_FILE="${LOG_FILE:-${LOG_DIR}/mapping_${MAP_NAME}_${DATETIME}.log}"
 
-# --- Load Topics from mapping manifest ---
-MAPPING_JSON_FILE="$HOME/emos/robot/mapping.json"
-
-if [[ ! -f "$MAPPING_JSON_FILE" ]]; then
-    error "Mapping manifest file not found. Run 'emos update' to get the latest files."
-    exit 1
-fi
-
-# Use jq to read array into Bash array
-mapfile -t TOPICS < <(jq -r '.topics[]' "$MAPPING_JSON_FILE")
+# --- Emos universal robot mapping topics ---
+TOPICS=("/lidar/raw" "/imu/raw" "/tf" "/tf_static")
 
 
 log "Map Name: $MAP_NAME"
@@ -61,7 +53,7 @@ if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
     run_with_spinner "Stopping existing EMOS container..." "docker stop $CONTAINER_NAME >/dev/null 2>&1" || true
 fi
 
-run_with_spinner "Starting EMOS container..." "docker start $CONTAINER_NAME >/dev/null 2>&1" || error "Failed to start container." && exit 1
+run_with_spinner "Starting EMOS container..." "docker start $CONTAINER_NAME >/dev/null 2>&1" || (error "Failed to start container." && exit 1)
 
 
 # --- RMW Configuration ---

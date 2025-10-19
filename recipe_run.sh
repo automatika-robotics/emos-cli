@@ -94,7 +94,7 @@ if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
     run_with_spinner "Stopping existing EMOS container..." "docker stop $CONTAINER_NAME >/dev/null 2>&1" || true
 fi
 
-run_with_spinner "Starting EMOS container..." "docker start $CONTAINER_NAME >/dev/null 2>&1" || error "Failed to start container." && exit 1
+run_with_spinner "Starting EMOS container..." "docker start $CONTAINER_NAME >/dev/null 2>&1" || (error "Failed to start container." && exit 1)
 
 
 # --- RMW Configuration ---

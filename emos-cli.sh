@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-# emos - EmbodiedOS Management CLI v0.3.4
+# emos - EmbodiedOS Management CLI v0.3.5
 # ==============================================================================
 
 # --- Configuration ---
-EMOS_VERSION="0.3.4"
+EMOS_VERSION="0.3.5"
 CONFIG_DIR="$HOME/.config/emos"
 RECIPES_DIR="$HOME/emos/recipes"
 LICENSE_FILE="$CONFIG_DIR/license.key"
@@ -736,9 +736,16 @@ do_map_edit() {
         ros2 run glim_ros glim_roseditor --map_path /tmp/dump --save_path /tmp --map_name $map_name
         "
 
+    # RUN Glim TF node (transforms from raw robot topics to glim topics with unique base_link frame)
+    gum style --bold --foreground "$THEME_BLUE" "Starting Data TF..."
+    docker exec -d "$MAPPING_CONTAINER_NAME" bash -c "
+        source /ros_entrypoint.sh
+        ros2 run glim_ros glim_transformer_node /lidar/raw /imu/raw /lidar /imu  base_link
+        "
+
     # Start the ROS bag playback (detached)
     gum style --bold --foreground "$THEME_BLUE" "Starting ROS bag playback..."
-    docker exec -d "$MAPPING_CONTAINER_NAME" bash -c "source /ros_entrypoint.sh && ros2 bag play /tmp/$map_name"
+    docker exec -d "$MAPPING_CONTAINER_NAME" bash -c "source /ros_entrypoint.sh && ros2 bag play /tmp/$map_name/*"
 
     # Wait for the editor process to finish
     gum style --bold --foreground "$THEME_BLUE" "Edit your map and close the editor window when done. I will wait for you to finish..."
